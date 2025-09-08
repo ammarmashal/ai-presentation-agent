@@ -6,6 +6,11 @@ __pycache__/
 # C extensions
 *.so
 
+
+.env
+venv/
+__pycache__/
+*.pyc
 # Distribution / packaging
 .Python
 build/
@@ -206,9 +211,3 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
-
-# Virtual Environments
-.env
-venv/
-__pycache__/
-*.pyc
