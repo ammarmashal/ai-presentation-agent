@@ -2,6 +2,8 @@ import os
 from dotenv import load_dotenv
 from groq import Groq
 import pprint
+import re
+import random
 
 # Load environment variables
 load_dotenv()
@@ -15,7 +17,6 @@ def initialize_groq_client():
     client = Groq(api_key=GROQ_API_KEY)
     print("✅ Groq client initialized.")
     return client
-
 
 def get_user_preferences():
     """Get user input for presentation preferences"""
@@ -36,141 +37,198 @@ def get_user_preferences():
 
 def get_presentation_outline(client, topic: str, detail_level: str = "simple") -> str:
     """
-    Generate a presentation outline using Groq LLM with option for simple or detailed output.
-    
-    Args:
-        client: Initialized Groq client
-        topic (str): The topic of the presentation.
-        detail_level (str): "simple" for 3-5 slides, "detailed" for more comprehensive outline.
-    
-    Returns:
-        str: The generated outline text.
+    Generate a presentation outline using Groq LLM with specific structure and page counts
     """
+    # Enhanced system prompt for consistent formatting and structure
+    system_prompt = (
+        "You are an AI presentation assistant. Create professional presentation outlines with strict formatting:\n"
+        "- Each slide header must be on its own line with **Header** format\n"
+        "- Use bullet points starting with '- ' for content\n"
+        "- For detailed presentations: include 2-4 detailed bullet points per slide with explanations\n"
+        "- For simple presentations: include 3-5 concise bullet points per slide\n"
+        "- Use exactly two spaces per indent level for sub-bullets\n"
+        "- Do not use numbering, tables, or code blocks\n"
+        "- Ensure the presentation has logical flow: Introduction -> Main Content -> Conclusion\n"
+        "- Make the content professional and suitable for business/educational presentations"
+    )
+    
     if detail_level == "simple":
-        prompt = f"Generate a concise presentation outline with 3-5 slides about {topic}. Use clear section headers marked with ** around them and bullet points with - for each slide."
+        prompt = f"""Generate a concise professional presentation about {topic} with 10-12 slides. Structure it as follows:
+
+1. The presentation should have:
+    - Slide 1: Title slide (just the main topic as title).
+    - Slide 2: Introduction (title = "Introduction") with 3 to 5 full sentences introducing the topic.  
+    - Then: For each slide, create **a main slide title** and **3-5 very short bullet points only** (keywords or short phrases, no explanations).  
+2. Do not add numbering or "Slide X:" text.  
+3. Return the output in plain text format with:
+    - Title
+    - Subtitle / Introduction
+    - Bullets
+
+Ensure the presentation is professional, well-structured, and suitable for business audiences."""
+    
     else:  # detailed
-        prompt = f"Generate a comprehensive presentation outline with 7-10 slides about {topic}, including detailed points for each slide. Use clear section headers marked with ** around them and bullet points with - for each slide."
+        prompt = f"""Generate a comprehensive professional presentation about {topic} with 12-15 slides. Structure it as follows:
+
+
+
+1. The presentation should have:
+   - Slide 1: Title slide (just the main topic as title).
+   - Slide 2: Introduction (title = "Introduction") with 3 to 5 full sentences introducing the topic.  
+   - Then: For each slide, create a main slide title, and under it:
+       - 2 to 3 bullet points
+       - Each bullet point should have 2–3 full sentences explaining it with muximam kines = 3.  
+2. Do not add numbering or "Slide X:" text.  
+3. Return the output in plain text format with:
+   - Title
+   - Subtitle / Introduction
+   - Bullets with explanation
+
+Ensure each bullet point provides substantial detail and explanation. Make it professional and suitable for expert audiences."""
     
     try:
         response = client.chat.completions.create(
             model="llama-3.1-8b-instant",
             messages=[
-                {"role": "system", "content": "You are an AI presentation assistant. Create well-structured presentation outlines with clear sections marked with ** and bullet points starting with -."},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": prompt}
             ],
             temperature=0.7,
-            timeout=30  # Add timeout to prevent hanging
+            timeout=45
         )
         return response.choices[0].message.content
     except Exception as e:
         raise Exception(f"❌ Failed to generate outline: {str(e)}")
 
-import re
-
-# In your llm_utils.py file, replace the parse_llm_output_to_outline function with:
-
-def parse_llm_output_to_outline(llm_output):
+def parse_llm_output_to_outline(llm_output: str) -> dict:
     """
-    Convert LLM output to a structured dictionary for PowerPoint generation.
-    This version handles nested bullet points.
-    
-    Args:
-        llm_output (str): The raw output from the LLM
-    
-    Returns:
-        dict: Structured outline with sections as keys and nested content as values
+    Parse LLM output to a structured outline:
+    { section_title: [ {text: str, level: int}, ... ], ... }
+    - Two spaces = one indent level
+    - Tab = one indent level
+    - Supports '**Title**' or 'Slide N: Title' as section headers
     """
-    outline = {}
-    current_section = None
-    
-    for line in llm_output.splitlines():
-        line = line.strip()
-        if not line:
+    outline: dict[str, list[dict]] = {}
+    current_section: str | None = None
+    default_section = "Content"
+
+    for raw_line in llm_output.splitlines():
+        if not raw_line.strip():
             continue
-        
-        # Detect section headers (formatted with ** or Slide X:)
-        if (line.startswith("**") and line.endswith("**")) or line.startswith("Slide"):
-            # Clean up the section title
-            clean_line = re.sub(r'\*\*', '', line)
-            if clean_line.startswith("Slide"):
-                # Extract just the title part after "Slide X:"
-                clean_line = re.sub(r'^Slide\s+\d+:\s*', '', clean_line)
-            current_section = clean_line.strip()
-            outline[current_section] = []
-        
-        # Detect bullet points
-        elif current_section and line.startswith("-"):
-            clean_point = line.lstrip("- ").strip()
-            # Remove any remaining markdown formatting
-            clean_point = re.sub(r'\*\*', '', clean_point)
-            outline[current_section].append(clean_point)
-    
-    return outline
 
+        stripped = raw_line.strip()
+
+        # Standalone section headers
+        header_match = re.match(r'^\*\*(.+?)\*\*$', stripped)
+        if header_match:
+            current_section = header_match.group(1).strip()
+            outline[current_section] = []
+            continue
+
+        slide_match = re.match(r'^Slide\s+\d+:\s*(.+)$', stripped, flags=re.IGNORECASE)
+        if slide_match:
+            current_section = slide_match.group(1).strip()
+            outline[current_section] = []
+            continue
+
+        # Bullets (keep leading whitespace to compute level)
+        bullet_match = re.match(r'^[ \t]*[-*•]\s+(.*)$', raw_line)
+        if bullet_match:
+            # Compute level from leading whitespace
+            leading_ws_len = len(raw_line) - len(raw_line.lstrip(' \t'))
+            ws_prefix = raw_line[:leading_ws_len]
+            tabs = ws_prefix.count('\t')
+            spaces = ws_prefix.count(' ')
+            level = tabs + (spaces // 2)  # 2 spaces = one level
+
+            text = bullet_match.group(1).strip()
+            # Remove surrounding bold if present on the bullet text itself
+            text = re.sub(r'^\*\*(.+?)\*\*$', r'\1', text)
+
+            if not current_section:
+                current_section = default_section
+                outline.setdefault(current_section, [])
+
+            outline[current_section].append({
+                "text": text,
+                "level": max(0, min(level, 8))  # PowerPoint levels 0..8
+            })
+            continue
+
+        # Non-bullet content: treat as section if none exists yet, else as level-0 point
+        if not current_section:
+            current_section = stripped
+            outline[current_section] = []
+        else:
+            outline[current_section].append({"text": stripped, "level": 0})
+
+    return outline
 
 def get_mock_outline(topic, detail_level):
     """Return a mock outline for testing when API is unavailable"""
     if detail_level == "simple":
-        return f"""
-**Introduction to {topic}**
-- What is {topic}?
-- Why is {topic} important?
-- Key concepts overview
-
-**Applications of {topic}**
-- Real-world examples
-- Industry impact
-- Future potential
-
-**Conclusion**
-- Summary of key points
-- Final thoughts
-- Q&A
-"""
+        # Simple presentation with 7-12 slides worth of content
+        sections = [
+            "Introduction",
+            "Core Concepts",
+            "Key Features", 
+            "Applications",
+            "Benefits",
+            "Implementation",
+            "Case Studies",
+            "Best Practices",
+            "Future Trends",
+            "Conclusion"
+        ]
+        
+        content = f"**{sections[0]}**\n"
+        content += "- Brief overview and significance\n- Main objectives and goals\n- Target audience and use cases\n\n"
+        
+        for i, section in enumerate(sections[1:-1], 1):
+            content += f"**{section}**\n"
+            content += f"- Key point 1 about {section.lower()}\n- Key point 2 about {section.lower()}\n- Key point 3 about {section.lower()}\n\n"
+        
+        content += f"**{sections[-1]}**\n"
+        content += "- Summary of main points\n- Key takeaways\n- Next steps and recommendations"
+        
+        return content
+        
     else:
-        return f"""
-Introduction to {topic}
-- Definition and background
-- Historical context
-- Importance in modern world
-- Key terminology
-
-**Core Concepts of {topic}**
-- Fundamental principles
-- Theoretical foundations
-- Key components and elements
-- Relationships between concepts
-
-**Applications of {topic}**
-- Industry use cases
-- Real-world implementations
-- Success stories
-- Case studies
-
-**Benefits and Advantages**
-- Economic impact
-- Efficiency improvements
-- Quality enhancements
-- Competitive advantages
-
-**Challenges and Limitations**
-- Implementation barriers
-- Technical limitations
-- Cost considerations
-- Adoption challenges
-
-**Future Trends**
-- Emerging developments
-- Research directions
-- Market predictions
-- Innovation opportunities
-
-**Conclusion and Recommendations**
-- Summary of key insights
-- Strategic recommendations
-- Call to action
-- References
-"""
+        # Detailed presentation with 10-15 slides worth of content
+        sections = [
+            "Introduction to {}".format(topic),
+            "Historical Background",
+            "Fundamental Principles",
+            "Technical Architecture", 
+            "Key Components",
+            "Implementation Methods",
+            "Industry Applications",
+            "Success Stories",
+            "Benefits and Advantages",
+            "Challenges and Limitations",
+            "Future Developments",
+            "Best Practices",
+            "Case Study Analysis",
+            "Conclusion and Recommendations"
+        ]
+        
+        content = f"**{sections[0]}**\n"
+        content += "- Comprehensive overview of {} and its significance in modern technology\n".format(topic)
+        content += "- Detailed explanation of core concepts and their interrelationships\n"
+        content += "- Discussion of the evolution and current state of {} technology\n\n".format(topic)
+        
+        for i, section in enumerate(sections[1:-1], 1):
+            content += f"**{section}**\n"
+            content += f"- In-depth analysis of first aspect of {section.lower()}\n"
+            content += f"- Detailed examination of second aspect with specific examples\n"
+            content += f"- Comprehensive review of third aspect including practical implications\n\n"
+        
+        content += f"**{sections[-1]}**\n"
+        content += "- Detailed summary of all key insights and findings\n"
+        content += "- Specific recommendations for implementation and adoption\n"
+        content += "- Future outlook and potential developments in the field"
+        
+        return content
 
 def generate_outline(topic=None, detail_level=None):
     """Main function to generate an outline with user preferences or provided arguments."""
@@ -189,9 +247,16 @@ def generate_outline(topic=None, detail_level=None):
         # Parse to dictionary
         outline_dict = parse_llm_output_to_outline(outline_text)
         
-        print("\nParsed Outline Structure:")
+        print(f"\nParsed Outline Structure ({len(outline_dict)} slides):")
         for section, points in outline_dict.items():
-            print(f"{section}: {len(points)} bullet points")
+            print(f"• {section}: {len(points)} bullet points")
+        
+        # Validate slide count
+        slide_count = len(outline_dict)
+        if detail_level == "simple" and not (7 <= slide_count <= 12):
+            print(f"⚠️  Warning: Simple presentation has {slide_count} slides (expected 7-12)")
+        elif detail_level == "detailed" and not (10 <= slide_count <= 15):
+            print(f"⚠️  Warning: Detailed presentation has {slide_count} slides (expected 10-15)")
         
         return outline_dict, topic
         
@@ -208,9 +273,9 @@ def generate_outline(topic=None, detail_level=None):
         print(f"\nMock {detail_level} outline for '{topic}':\n")
         print(outline_text)
         
-        print("\nParsed Outline Structure:")
+        print(f"\nParsed Outline Structure ({len(outline_dict)} slides):")
         for section, points in outline_dict.items():
-            print(f"{section}: {len(points)} bullet points")
+            print(f"• {section}: {len(points)} bullet points")
         
         return outline_dict, topic
 
