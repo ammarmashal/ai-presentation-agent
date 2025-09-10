@@ -1,7 +1,11 @@
 import os
 import argparse
 from pptx import Presentation
+from pptx.enum.text import MSO_AUTO_SIZE
 from llm_utils import generate_outline
+
+
+
 
 def list_available_themes(theme_folder):
     """List all available themes in the specified folder"""
@@ -10,29 +14,7 @@ def list_available_themes(theme_folder):
         raise FileNotFoundError(f"❌ No .pptx themes found in folder: {theme_folder}")
     return themes
 
-
-def add_bullet_points(points_list, text_frame, level=0):
-    for point in points_list:
-        if isinstance(point, dict):
-            # Add bullet point
-            p = text_frame.add_paragraph()  # Always create a new paragraph
-            p.text = point['text']
-            p.level = level
-            
-            # Add subpoints if they exist
-            if 'subpoints' in point and point['subpoints']:
-                add_bullet_points(point['subpoints'], text_frame, level + 1)
-        else:
-            # Fallback for simple strings
-            p = text_frame.add_paragraph()
-            p.text = point
-            p.level = level
-
-from pptx import Presentation
-from pptx.enum.text import MSO_AUTO_SIZE
-import os
-
-def create_presentation(outline, topic, theme_path, filename="presentation.pptx"):
+def create_presentation(outline, presentation_title, theme_path, filename="presentation.pptx"):
     """Create a PowerPoint presentation using a .pptx theme file with proper nested bullets"""
     try:
         # Validate theme file
@@ -46,11 +28,11 @@ def create_presentation(outline, topic, theme_path, filename="presentation.pptx"
         else:
             raise FileNotFoundError(f"❌ Theme file not found: {theme_path}")
         
-        # Title slide
+        # Title slide - USE THE LLM-GENERATED TITLE
         title_slide = prs.slides.add_slide(prs.slide_layouts[0])
         title = title_slide.shapes.title
         subtitle = title_slide.placeholders[1] if len(title_slide.placeholders) > 1 else None
-        title.text = topic
+        title.text = presentation_title  # Use the LLM-generated title here
         if subtitle:
             subtitle.text = "Created with AI Presentation Generator"
         
@@ -86,8 +68,6 @@ def create_presentation(outline, topic, theme_path, filename="presentation.pptx"
 
                 p.text = point["text"]
                 p.level = level
-                
-                # REMOVED THE PROBLEMATIC FONT SIZE LINE - Let the theme handle styling
         
         # Delete the first slide (if needed)
         try:
@@ -115,7 +95,7 @@ def create_presentation(outline, topic, theme_path, filename="presentation.pptx"
         title_slide = prs.slides.add_slide(prs.slide_layouts[0])
         title = title_slide.shapes.title
         subtitle = title_slide.placeholders[1] if len(title_slide.placeholders) > 1 else None
-        title.text = topic
+        title.text = presentation_title  # Use the LLM-generated title here
         if subtitle:
             subtitle.text = "Created with AI Presentation Generator"
         
@@ -182,11 +162,11 @@ def main():
         raise FileNotFoundError(f"❌ Theme '{args.theme}' not found in folder: {theme_folder}")
     
     # Generate outline
-    outline, topic = generate_outline(args.topic, args.detail)
+    outline, presentation_title = generate_outline(args.topic, args.detail)
     
-    # Create presentation
-    create_presentation(outline, topic, theme_path, args.output)
-    
+    # Create presentation - pass the LLM-generated title
+    create_presentation(outline, presentation_title, theme_path, args.output)
+
     print("🎉 Presentation created successfully!")
 
 if __name__ == "__main__":
