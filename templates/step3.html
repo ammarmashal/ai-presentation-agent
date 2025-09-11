@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AI Presentation Generator - Step 3</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .header { text-align: center; color: #1f77b4; }
+        .info-box { background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
+        .outline-section { margin-bottom: 15px; }
+        .outline-header { font-weight: bold; cursor: pointer; }
+        .outline-content { margin-left: 20px; display: none; }
+        .nav-buttons { display: flex; justify-content: space-between; margin-top: 20px; }
+        button { background-color: #4CAF50; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; }
+        .back-btn { background-color: #6c757d; }
+        .download-btn { background-color: #007bff; }
+        .error { color: red; margin: 10px 0; }
+        .success { color: green; margin: 10px 0; }
+    </style>
+    <script>
+        function toggleOutline(section) {
+            const content = document.getElementById('content-' + section);
+            content.style.display = content.style.display === 'none' ? 'block' : 'none';
+        }
+    </script>
+</head>
+<body>
+    <h1 class="header">AI Presentation Generator</h1>
+    <h2>Step 3: Generate and Download Presentation</h2>
+    
+    <div class="info-box">
+        <p><strong>Topic:</strong> {{ topic }}</p>
+        <p><strong>Detail Level:</strong> {{ detail_level }}</p>
+        <p><strong>Theme:</strong> {{ theme }}</p>
+    </div>
+    
+    {% if error %}
+    <div class="error">{{ error }}</div>
+    {% endif %}
+    
+    {% if not presentation_ready %}
+    <form method="POST">
+        <button type="submit">Generate Presentation</button>
+    </form>
+    {% else %}
+    <div class="success">Presentation generated successfully!</div>
+    
+    {% if outline %}
+    <h3>Presentation Outline:</h3>
+    {% for section, points in outline.items() %}
+    <div class="outline-section">
+        <div class="outline-header" onclick="toggleOutline('{{ loop.index }}')">
+            {{ section }}
+        </div>
+        <div class="outline-content" id="content-{{ loop.index }}">
+            <ul>
+                {% for point in points %}
+                <li>{{ point.text }}</li>
+                {% endfor %}
+            </ul>
+        </div>
+    </div>
+    {% endfor %}
+    {% endif %}
+    
+    <div class="nav-buttons">
+        <a href="{{ url_for('step2') }}" class="back-btn">← Back</a>
+        <a href="{{ url_for('download') }}" class="download-btn">Download Presentation</a>
+    </div>
+    {% endif %}
+    
+    <div style="margin-top: 30px;">
+        <a href="{{ url_for('reset') }}">Create New Presentation</a>
+    </div>
+</body>
+</html>

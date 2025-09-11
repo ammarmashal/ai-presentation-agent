@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AI Presentation Generator - Step 1</title>
+    <style>
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
+        .header { text-align: center; color: #1f77b4; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="text"], select { width: 100%; padding: 8px; border: 1px solid #ddd; border-radius: 4px; }
+        .radio-group { display: flex; gap: 20px; }
+        .radio-group label { display: inline; font-weight: normal; }
+        button { background-color: #4CAF50; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; }
+        .error { color: red; margin: 10px 0; }
+    </style>
+</head>
+<body>
+    <h1 class="header">AI Presentation Generator</h1>
+    <h2>Step 1: Enter Presentation Details</h2>
+    
+    {% if error %}
+    <div class="error">{{ error }}</div>
+    {% endif %}
+    
+    <form method="POST">
+        <div class="form-group">
+            <label for="topic">Presentation Topic:</label>
+            <input type="text" id="topic" name="topic" value="{{ session.get('topic', '') }}" placeholder="e.g., Artificial Intelligence" required>
+        </div>
+        
+        <div class="form-group">
+            <label>Detail Level:</label>
+            <div class="radio-group">
+                <label><input type="radio" name="detail_level" value="simple" {% if session.get('detail_level', 'simple') == 'simple' %}checked{% endif %}> Simple</label>
+                <label><input type="radio" name="detail_level" value="detailed" {% if session.get('detail_level') == 'detailed' %}checked{% endif %}> Detailed</label>
+            </div>
+        </div>
+        
+        <button type="submit">Next →</button>
+    </form>
+</body>
+</html>

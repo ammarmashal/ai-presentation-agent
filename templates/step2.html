@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>AI Presentation Generator - Step 2</title>
+    <style>
+        body { 
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
+            max-width: 1200px; 
+            margin: 0 auto; 
+            padding: 20px;
+            background-color: #f8f9fa;
+        }
+        .header { 
+            text-align: center; 
+            color: #1f77b4; 
+            margin-bottom: 30px;
+        }
+        .theme-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 25px;
+            margin: 30px 0;
+        }
+        .theme-card {
+            background: white;
+            border-radius: 12px;
+            overflow: hidden;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            transition: transform 0.3s ease, box-shadow 0.3s ease;
+            cursor: pointer;
+            border: 3px solid transparent;
+        }
+        .theme-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+        }
+        .theme-card.selected {
+            border-color: #4CAF50;
+            box-shadow: 0 8px 25px rgba(76, 175, 80, 0.3);
+        }
+        .theme-image {
+            width: 100%;
+            height: 180px;
+            object-fit: cover;
+            border-bottom: 1px solid #eee;
+        }
+        .theme-name {
+            padding: 20px;
+            text-align: center;
+            font-weight: 600;
+            color: #333;
+            font-size: 16px;
+        }
+        .nav-buttons {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 40px;
+            padding: 20px 0;
+            border-top: 1px solid #eee;
+        }
+        .btn {
+            padding: 12px 30px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 16px;
+            font-weight: 600;
+            text-decoration: none;
+            display: inline-block;
+            text-align: center;
+            transition: background-color 0.3s ease;
+        }
+        .btn-primary {
+            background-color: #4CAF50;
+            color: white;
+        }
+        .btn-primary:hover {
+            background-color: #45a049;
+        }
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+        .btn-secondary:hover {
+            background-color: #5a6268;
+        }
+        .error { 
+            color: #dc3545; 
+            margin: 20px 0; 
+            padding: 15px;
+            background-color: #f8d7da;
+            border: 1px solid #f5c6cb;
+            border-radius: 8px;
+        }
+        .selected-theme {
+            background-color: #d4edda;
+            color: #155724;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            text-align: center;
+            font-weight: 600;
+        }
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>AI Presentation Generator</h1>
+        <h2>Step 2: Choose a Presentation Theme</h2>
+    </div>
+    
+    {% if error %}
+    <div class="error">{{ error }}</div>
+    {% endif %}
+    
+    <form method="POST" id="themeForm">
+        <input type="hidden" id="selectedTheme" name="theme" value="">
+        
+        <div class="theme-grid">
+            {% for theme in themes %}
+            <div class="theme-card" onclick="selectTheme('{{ theme.name }}')" id="card-{{ theme.name }}">
+                <img src="{{ theme.image_url }}" alt="{{ theme.name }}" class="theme-image">
+                <div class="theme-name">{{ theme.name }}</div>
+            </div>
+            {% endfor %}
+        </div>
+        
+        <div id="selectionInfo" class="selected-theme hidden">
+            Please select a theme to continue
+        </div>
+        
+        <div class="nav-buttons">
+            <a href="{{ url_for('step1') }}" class="btn btn-secondary">← Back</a>
+            <button type="submit" class="btn btn-primary" id="nextButton" disabled>Next →</button>
+        </div>
+    </form>
+
+    <script>
+        let selectedTheme = '';
+        
+        function selectTheme(themeName) {
+            selectedTheme = themeName;
+            document.getElementById('selectedTheme').value = themeName;
+            
+            // Update UI
+            document.querySelectorAll('.theme-card').forEach(card => {
+                card.classList.remove('selected');
+            });
+            document.getElementById('card-' + themeName).classList.add('selected');
+            
+            // Enable next button
+            document.getElementById('nextButton').disabled = false;
+            
+            // Show selection info
+            const selectionInfo = document.getElementById('selectionInfo');
+            selectionInfo.textContent = `Selected: ${themeName}`;
+            selectionInfo.classList.remove('hidden');
+        }
+        
+        // Initialize form
+        document.getElementById('themeForm').addEventListener('submit', function(e) {
+            if (!selectedTheme) {
+                e.preventDefault();
+                alert('Please select a theme');
+            }
+        });
+    </script>
+</body>
+</html>
