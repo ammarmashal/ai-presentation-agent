@@ -116,7 +116,7 @@ Ensure the presentation is professional, well-structured, and suitable for busin
    - Slide 2: Introduction (title = "Introduction") with 3 to 5 full sentences introducing the topic.  
    - Then: For each slide, create a main slide title, and under it:
        - 2 to 3 bullet points
-       - Each bullet point should have 2–3 full sentences explaining it with muximam kines = 3.  
+       - Each bullet point should have 2–3 full sentences explaining it with muximam lines = 3.  
 2. Do not add numbering or "Slide X:" text.  
 3. Return the output in plain text format with:
    - Title

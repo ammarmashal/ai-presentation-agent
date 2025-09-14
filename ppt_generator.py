@@ -3,6 +3,7 @@ import argparse
 from pptx import Presentation
 from pptx.enum.text import MSO_AUTO_SIZE
 from llm_utils import generate_outline
+from image_search import add_images_to_presentation  
 
 
 
@@ -14,7 +15,8 @@ def list_available_themes(theme_folder):
         raise FileNotFoundError(f"❌ No .pptx themes found in folder: {theme_folder}")
     return themes
 
-def create_presentation(outline, presentation_title, theme_path, filename="presentation.pptx"):
+
+def create_presentation(outline, presentation_title, theme_path, detail_level, filename="presentation.pptx"):
     """Create a PowerPoint presentation using a .pptx theme file with proper nested bullets"""
     try:
         # Validate theme file
@@ -37,12 +39,18 @@ def create_presentation(outline, presentation_title, theme_path, filename="prese
             subtitle.text = "Created with AI Presentation Generator"
         
         # Content slides
+        slide_index_map = {}  # Track the actual slide index for each outline section
+        current_slide_idx = 1  # Start after title slide
+        
         for section, points in outline.items():
             if not section.strip() or not points:
                 continue
                 
             # Create a new slide
             slide = prs.slides.add_slide(prs.slide_layouts[1])
+            slide_index_map[section] = current_slide_idx
+            current_slide_idx += 1
+            
             title_shape = slide.shapes.title
             content_shape = slide.placeholders[1]
             
@@ -68,6 +76,9 @@ def create_presentation(outline, presentation_title, theme_path, filename="prese
 
                 p.text = point["text"]
                 p.level = level
+        
+        # Add relevant images to the presentation (passing detail_level)
+        prs = add_images_to_presentation(prs, outline, presentation_title, detail_level, num_images=3)
         
         # Delete the first slide (if needed)
         try:
@@ -127,6 +138,9 @@ def create_presentation(outline, presentation_title, theme_path, filename="prese
                 p.text = point["text"]
                 p.level = level
         
+        # Add relevant images to the presentation (passing detail_level)
+        prs = add_images_to_presentation(prs, outline, presentation_title, detail_level, num_images=3)
+        
         # Save the fallback presentation
         fallback_filename = f"basic_{filename}"
         prs.save(fallback_filename)
@@ -164,8 +178,8 @@ def main():
     # Generate outline
     outline, presentation_title = generate_outline(args.topic, args.detail)
     
-    # Create presentation - pass the LLM-generated title
-    create_presentation(outline, presentation_title, theme_path, args.output)
+    # Create presentation - pass the LLM-generated title AND detail level
+    create_presentation(outline, presentation_title, theme_path, args.detail, args.output)
 
     print("🎉 Presentation created successfully!")
 

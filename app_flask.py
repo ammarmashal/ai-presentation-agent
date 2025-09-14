@@ -160,6 +160,7 @@ def step3():
                     outline, 
                     presentation_title, 
                     theme_path, 
+                    session.get('detail_level', 'simple'),  # Pass detail level
                     tmp_file.name
                 )
             
@@ -186,6 +187,8 @@ def step3():
                             detail_level=session.get('detail_level', 'simple'),
                             theme=session['theme'])
 
+
+
 @app.route('/download')
 def download():
     if 'presentation_path' not in session or not os.path.exists(session['presentation_path']):
@@ -198,6 +201,9 @@ def download():
         download_name=f"{presentation_title.replace(' ', '_')}.pptx",
         mimetype="application/vnd.openxmlformats-officedocument.presentationml.presentation"
     )
+
+
+
 
 @app.route('/reset')
 def reset():
