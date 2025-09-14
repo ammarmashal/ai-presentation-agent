@@ -7,7 +7,7 @@ from flask import send_from_directory
 
 
 app = Flask(__name__)
-app.secret_key = 'your-secret-key-here'  # Change this to a random secret key
+app.secret_key = 'your-secret-key-here'  
 
 
 def find_matching_image(theme_name):

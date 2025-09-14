@@ -3,3 +3,4 @@ flask==2.3.3
 python-dotenv==1.0.0
 groq
 python-pptx==0.6.21
+gunicorn
