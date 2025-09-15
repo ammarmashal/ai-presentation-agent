@@ -88,6 +88,7 @@ def add_image_to_slide(slide, image_path, position="left_bottom", size=Inches(3)
 def create_image_slide(prs, image_path, title_text=""):
     """
     Create a dedicated slide for an image (for detailed presentations)
+    The image will fill the entire slide.
     """
     try:
         # Use a blank layout for image slides (no header)
@@ -97,22 +98,18 @@ def create_image_slide(prs, image_path, title_text=""):
         slide_width = prs.slide_width
         slide_height = prs.slide_height
 
-        # Define image size (adjust as needed)
-        image_width = Inches(6)  # Set the desired width of the image
-        image_height = Inches(4)  # Set the desired height of the image
-
-        # Calculate centered position
-        left = (slide_width - image_width) / 2
-        top = (slide_height - image_height) / 2
+        # Set the image to fill the entire slide
+        left = Inches(0)  # Start at the left edge
+        top = Inches(0)   # Start at the top edge
+        width = slide_width
+        height = slide_height
 
         # Add the image to the slide
-        slide.shapes.add_picture(image_path, left, top, width=image_width, height=image_height)
+        slide.shapes.add_picture(image_path, left, top, width=width, height=height)
 
-        # Add a title if provided
+        # Add a title if provided (optional, but not recommended for full-slide images)
         if title_text:
-            title_box = slide.shapes.title
-            if title_box:
-                title_box.text = title_text
+            print("⚠️ Title text is ignored for full-slide images.")
 
         return slide
     except Exception as e:
