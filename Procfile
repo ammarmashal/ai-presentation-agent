@@ -1,1 +1,1 @@
-web: uvicorn app_flask:app --host 0.0.0.0 --port $PORT
+web: gunicorn app_flask:app --bind 0.0.0.0:$PORT
