@@ -76,55 +76,56 @@ def get_user_preferences():
     
     return topic, detail_level
 
+# In your llm_utils.py file
+
+# In your llm_utils.py file
+
 def get_presentation_outline(client, topic: str, detail_level: str = "simple") -> str:
     """
-    Generate a presentation outline using Groq LLM with specific structure and page counts
+    Generate a presentation outline using Groq LLM with a generated title and specific constraints.
     """
-    # Enhanced system prompt for consistent formatting and structure
     system_prompt = (
-        "You are an AI presentation assistant. Create professional presentation outlines with strict formatting:\n"
-        "- Each slide header must be on its own line with **Header** format\n"
-        "- Use bullet points starting with '- ' for content\n"
-        "- For detailed presentations: include 2-4 detailed bullet points per slide with explanations\n"
-        "- For simple presentations: include 3-5 concise bullet points per slide\n"
-        "- Use exactly two spaces per indent level for sub-bullets\n"
-        "- Do not use numbering, tables, or code blocks\n"
-        "- Ensure the presentation has logical flow: Introduction -> Main Content -> Conclusion\n"
-        "- Make the content professional and suitable for business/educational presentations"
+        "You are an expert presentation assistant. Your task is to create a professional presentation outline. "
+        "Strictly adhere to the user's formatting and content constraints, including bullet point and sentence length. "
+        "Each slide should be concise and focused on a single idea. Use markdown headers for slide titles."
     )
-    
+
     if detail_level == "simple":
-        prompt = f"""Generate a concise professional presentation about {topic} with 10-12 slides. Structure it as follows:
-
-1. The presentation should have:
-    - Slide 1: Title slide (just the main topic as title).
-    - Slide 2: Introduction (title = "Introduction") with 3 to 5 full sentences introducing the topic.  
-    - Then: For each slide, create **a main slide title** and **3-5 very short bullet points only** (keywords or short phrases, no explanations).  
-2. Do not add numbering or "Slide X:" text.  
-3. Return the output in plain text format with:
-    - Title
-    - Subtitle / Introduction
-    - Bullets
-
-Ensure the presentation is professional, well-structured, and suitable for business audiences."""
+        prompt = f"""
+        Generate a concise, professional presentation outline about **{topic}**. The presentation should have 10-12 slides. Adhere to the following strict formatting rules:
+        
+        1. The first slide is a title slide. The title should be a professional, concise version of the main topic.
+        2. The second slide is "Introduction". It must have 3-5 full sentences of introductory text, not bullet points.
+        3. All subsequent slides must have a main title.
+        4. Under each slide title, provide exactly **5-7 very short bullet points**. Each bullet point should be a concise keyword or a short, impactful phrase, with no additional explanation.
+        5. The final slide must be titled "**Conclusion**" and summarize the key takeaways.
+        
+        Return the output in plain text. Do not include slide numbers.
+        """
     
     else:  # detailed
-        prompt = f"""Generate a comprehensive professional presentation about {topic} with 12-15 slides. Structure it as follows:
+        prompt = f"""
+        Generate a comprehensive, professional presentation outline about **{topic}**. The presentation should have 12-15 slides. Adhere to the following strict formatting rules:
 
-1. The presentation should have:
-   - Slide 1: Title slide (just the main topic as title).
-   - Slide 2: Introduction (title = "Introduction") with 3 to 5 full sentences introducing the topic.  
-   - Then: For each slide, create a main slide title, and under it:
-       - 2 to 3 bullet points
-       - Each bullet point should have 2–3 sentences explaining it with muximam lines 2.  
-2. Do not add numbering or "Slide X:" text.  
-3. Return the output in plain text format with:
-   - Title
-   - Subtitle / Introduction
-   - Bullets with explanation
+        **EXAMPLE OF A PERFECTLY FORMATTED SLIDE:**
+        **Core Components**
+        - The system architecture has three main components for data flow.
+        - A scalable framework handles all processing to reduce latency.
+        - The user interface provides real-time dashboards for key metrics.
+        
+        **END OF EXAMPLE**
 
-Ensure each bullet point provides substantial detail and explanation. Make it professional and suitable for expert audiences."""
-    
+        Now, generate the full outline based on the following rules:
+        1. The first slide is a title slide. The title should be a professional, concise version of the main topic.
+        2. The second slide is "Introduction". It must have 3-5 full sentences of introductory text, not bullet points.
+        3. All subsequent slides must have a main title.
+        4. Under each slide title, provide exactly **2-3 detailed bullet points**.
+        5. Each bullet point must be a single, meaningful sentence of about 10 words.
+        6. The final slide must be titled "**Conclusion**" and must have detailed bullet points as described above.
+
+        Return the output in plain text. Do not include slide numbers.
+        """
+
     try:
         response = client.chat.completions.create(
             model="llama-3.1-8b-instant",

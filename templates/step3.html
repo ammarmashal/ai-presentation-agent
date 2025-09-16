@@ -1,75 +1,224 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Presentation Generator - Step 3</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
-        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
-        .header { text-align: center; color: #1f77b4; }
-        .info-box { background-color: #f8f9fa; padding: 15px; border-radius: 5px; margin-bottom: 20px; }
-        .outline-section { margin-bottom: 15px; }
-        .outline-header { font-weight: bold; cursor: pointer; }
-        .outline-content { margin-left: 20px; display: none; }
-        .nav-buttons { display: flex; justify-content: space-between; margin-top: 20px; }
-        button { background-color: #4CAF50; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; }
-        .back-btn { background-color: #6c757d; }
-        .download-btn { background-color: #007bff; }
-        .error { color: red; margin: 10px 0; }
-        .success { color: green; margin: 10px 0; }
+        :root {
+            --primary-color: #3b82f6;
+            --primary-dark: #2563eb;
+            --background-color: #f3f4f6;
+            --card-background: #ffffff;
+            --text-color: #333;
+            --border-color: #e5e7eb;
+            --success-color: #10b981;
+            --error-color: #ef4444;
+            --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+        }
+        body {
+            font-family: 'Roboto', sans-serif;
+            background-color: var(--background-color);
+            margin: 0;
+            padding: 40px;
+            color: var(--text-color);
+        }
+        .container {
+            max-width: 800px;
+            margin: 0 auto;
+            background: var(--card-background);
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: var(--shadow);
+        }
+        .header {
+            text-align: center;
+            color: var(--primary-dark);
+            font-size: 2.5rem;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+        .subheader {
+            font-size: 1.5rem;
+            font-weight: 500;
+            margin-bottom: 30px;
+            color: #666;
+            text-align: center;
+        }
+        .info-box {
+            background-color: #e5e7eb;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            text-align: center;
+            font-weight: 500;
+        }
+        .outline-container {
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+        .outline-section {
+            margin-bottom: 10px;
+            border-bottom: 1px solid var(--border-color);
+        }
+        .outline-section:last-child {
+            border-bottom: none;
+        }
+        .outline-header {
+            font-weight: bold;
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: 15px 0;
+            position: relative;
+        }
+        .outline-header::after {
+            content: '+';
+            font-size: 1.5rem;
+            position: absolute;
+            right: 10px;
+            top: 50%;
+            transform: translateY(-50%);
+            transition: transform 0.3s ease;
+        }
+        .outline-header.expanded::after {
+            transform: translateY(-50%) rotate(45deg);
+        }
+        .outline-content {
+            margin-left: 20px;
+            max-height: 0;
+            overflow: hidden;
+            transition: max-height 0.4s ease-out;
+            padding-bottom: 0;
+        }
+        .outline-content.show {
+            max-height: 500px; /* A large value to allow content to expand */
+            padding-bottom: 15px;
+        }
+        .nav-buttons {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 20px;
+        }
+        .btn {
+            padding: 15px 30px;
+            border: none;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 1.1rem;
+            font-weight: 700;
+            text-decoration: none;
+            display: inline-block;
+            transition: background-color 0.3s ease, transform 0.2s ease;
+            text-align: center;
+        }
+        .btn-primary {
+            background-color: var(--primary-color);
+            color: white;
+        }
+        .btn-primary:hover {
+            background-color: var(--primary-dark);
+            transform: translateY(-2px);
+        }
+        .btn-secondary {
+            background-color: #6c757d;
+            color: white;
+        }
+        .btn-secondary:hover {
+            background-color: #5a6268;
+            transform: translateY(-2px);
+        }
+        .download-btn {
+            background-color: var(--success-color);
+            color: white;
+        }
+        .download-btn:hover {
+            background-color: #059669;
+        }
+        .error {
+            color: var(--error-color);
+            background-color: rgba(239, 68, 68, 0.1);
+            padding: 10px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            text-align: left;
+        }
+        .success {
+            color: var(--success-color);
+            background-color: rgba(16, 185, 129, 0.1);
+            padding: 15px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            text-align: center;
+            font-weight: bold;
+        }
     </style>
     <script>
         function toggleOutline(section) {
             const content = document.getElementById('content-' + section);
-            content.style.display = content.style.display === 'none' ? 'block' : 'none';
+            const header = document.getElementById('header-' + section);
+            
+            content.classList.toggle('show');
+            header.classList.toggle('expanded');
         }
     </script>
 </head>
 <body>
-    <h1 class="header">AI Presentation Generator</h1>
-    <h2>Step 3: Generate and Download Presentation</h2>
-    
-    <div class="info-box">
-        <p><strong>Topic:</strong> {{ topic }}</p>
-        <p><strong>Detail Level:</strong> {{ detail_level }}</p>
-        <p><strong>Theme:</strong> {{ theme }}</p>
-    </div>
-    
-    {% if error %}
-    <div class="error">{{ error }}</div>
-    {% endif %}
-    
-    {% if not presentation_ready %}
-    <form method="POST">
-        <button type="submit">Generate Presentation</button>
-    </form>
-    {% else %}
-    <div class="success">Presentation generated successfully!</div>
-    
-    {% if outline %}
-    <h3>Presentation Outline:</h3>
-    {% for section, points in outline.items() %}
-    <div class="outline-section">
-        <div class="outline-header" onclick="toggleOutline('{{ loop.index }}')">
-            {{ section }}
+    <div class="container">
+        <h1 class="header">AI Presentation Generator</h1>
+        <h2 class="subheader">Step 3: Generate and Download</h2>
+        
+        <div class="info-box">
+            <p><strong>Topic:</strong> {{ topic }}</p>
+            <p><strong>Detail Level:</strong> {{ detail_level }}</p>
+            <p><strong>Theme:</strong> {{ theme }}</p>
         </div>
-        <div class="outline-content" id="content-{{ loop.index }}">
-            <ul>
-                {% for point in points %}
-                <li>{{ point.text }}</li>
-                {% endfor %}
-            </ul>
+        
+        {% if error %}
+        <div class="error">{{ error }}</div>
+        {% endif %}
+        
+        {% if not presentation_ready %}
+        <form method="POST">
+            <button type="submit" class="btn btn-primary">Generate Presentation</button>
+        </form>
+        {% else %}
+        <div class="success">🎉 Presentation generated successfully!</div>
+        
+        {% if outline %}
+        <h3>Presentation Outline:</h3>
+        <div class="outline-container">
+            {% for section, points in outline.items() %}
+            <div class="outline-section">
+                <div class="outline-header" onclick="toggleOutline('{{ loop.index }}')" id="header-{{ loop.index }}">
+                    {{ section }}
+                </div>
+                <div class="outline-content" id="content-{{ loop.index }}">
+                    <ul>
+                        {% for point in points %}
+                        <li>{{ point.text }}</li>
+                        {% endfor %}
+                    </ul>
+                </div>
+            </div>
+            {% endfor %}
         </div>
-    </div>
-    {% endfor %}
-    {% endif %}
-    
-    <div class="nav-buttons">
-        <a href="{{ url_for('step2') }}" class="back-btn">← Back</a>
-        <a href="{{ url_for('download') }}" class="download-btn">Download Presentation</a>
-    </div>
-    {% endif %}
-    
-    <div style="margin-top: 30px;">
-        <a href="{{ url_for('reset') }}">Create New Presentation</a>
+        {% endif %}
+        
+        <div class="nav-buttons">
+            <a href="{{ url_for('step2') }}" class="btn btn-secondary">← Back</a>
+            <a href="{{ url_for('download') }}" class="btn download-btn">Download Presentation</a>
+        </div>
+        {% endif %}
+        
+        <div style="margin-top: 30px; text-align: center;">
+            <a href="{{ url_for('reset') }}" class="btn btn-secondary">Start Over</a>
+        </div>
     </div>
 </body>
 </html>

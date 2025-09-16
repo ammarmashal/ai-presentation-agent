@@ -2,8 +2,9 @@ from flask import Flask, render_template, request, send_file, session, redirect,
 import os
 import tempfile
 from llm_utils import generate_outline
-from ppt_generator import create_presentation, list_available_themes
+#from ppt_generator import create_presentation, list_available_themes
 from flask import send_from_directory
+from ppt import create_presentation, list_available_themes, ensure_conclusion_slide
 
 
 app = Flask(__name__)
@@ -151,41 +152,47 @@ def step3():
                 session['topic'], 
                 session.get('detail_level', 'simple')
             )
+
+            # Ensure conclusion slide
+            outline = ensure_conclusion_slide(outline, presentation_title)
             
-            # Create presentation
+            # Get the correct theme path
             theme_path = os.path.join("themes", f"{session['theme']}.pptx")
             
+            # Create a temporary file for the presentation
             with tempfile.NamedTemporaryFile(delete=False, suffix='.pptx') as tmp_file:
+                # Correct the function call by matching the signature
                 presentation_path = create_presentation(
                     outline, 
                     presentation_title, 
-                    theme_path, 
-                    session.get('detail_level', 'simple'),  # Pass detail level
-                    tmp_file.name
+                    session.get('detail_level', 'simple'),  # Correct: detail_level is the third argument
+                    tmp_file.name,                          # Correct: filename is the fourth argument
+                    theme_path                              # Correct: theme_path is the fifth argument
                 )
             
             session['presentation_path'] = presentation_path
             session['presentation_title'] = presentation_title
             
             return render_template('step3.html', 
-                                    topic=session['topic'],
-                                    detail_level=session.get('detail_level', 'simple'),
-                                    theme=session['theme'],
-                                    outline=outline,
-                                    presentation_title=presentation_title,
-                                    presentation_ready=True)
+                                   topic=session['topic'],
+                                   detail_level=session.get('detail_level', 'simple'),
+                                   theme=session['theme'],
+                                   outline=outline,
+                                   presentation_title=presentation_title,
+                                   presentation_ready=True)
             
         except Exception as e:
+            print(f"❌ Error generating presentation: {e}")
             return render_template('step3.html', 
-                                    topic=session['topic'],
-                                    detail_level=session.get('detail_level', 'simple'),
-                                    theme=session['theme'],
-                                    error=f"Error generating presentation: {str(e)}")
+                                   topic=session['topic'],
+                                   detail_level=session.get('detail_level', 'simple'),
+                                   theme=session['theme'],
+                                   error=f"Error generating presentation: {str(e)}")
     
     return render_template('step3.html', 
-                            topic=session['topic'],
-                            detail_level=session.get('detail_level', 'simple'),
-                            theme=session['theme'])
+                           topic=session['topic'],
+                           detail_level=session.get('detail_level', 'simple'),
+                           theme=session['theme'])
 
 
 

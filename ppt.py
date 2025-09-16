@@ -16,6 +16,7 @@ from collections import Counter
 from llm_utils import generate_outline
 
 
+
 # Load environment variables
 load_dotenv()
 UNSPLASH_ACCESS_KEY = os.getenv("UNSPLASH_ACCESS_KEY")
@@ -141,59 +142,47 @@ def get_relevant_image_queries(presentation_title, slide_title, content, is_deta
     
     return queries
 
-def determine_slide_layout(slide_index, detail_level, content_length, outline):
+def determine_slide_layout(slide_index, detail_level, content_length, outline, section_title):
     """
-    Determine the appropriate layout for each slide based on its position and content
+    Determine the appropriate layout for each slide based on its position, content, and title.
     """
-    # First slide is always title slide
+    num_slides = len(outline)
+
+    # 1. Prioritize the Title Slide
     if slide_index == 0:
         return "title"
+
+    # 2. Prioritize the Conclusion Slide
+    if "conclusion" in section_title.lower():
+        return "conclusion"
     
-    # Second slide is always title and content
+    # 3. Handle the Introduction Slide
     if slide_index == 1:
         return "title_content"
-    
-    # Last slide is always conclusion
-    if slide_index == len(outline) - 1:  # Last slide
-        return "conclusion"
 
-    # For detailed presentations, include more variety
+    # Available layouts, excluding 'image_full'
+    image_layouts = ["image_left_text_right", "image_right_text_left"]
+    content_layouts = ["title_content", "two_column", "comparison"]
+    
+    # Combine lists to create a full set of options
+    all_layouts = image_layouts + content_layouts
+    
+    # Apply logic based on detail level and content length
     if detail_level == "detailed":
-        # Use a pattern for detailed presentations
-        layout_pattern = [
-            "title_content",      # Slide 2
-            "image_left_text_right",  # Slide 3
-            "image_right_text_left",  # Slide 4
-            "title_content",          # Slide 5
-            "two_column",             # Slide 6
-            "image_full",             # Slide 7 (image only)
-            "title_content",          # Slide 8
-            #"comparison",             # Slide 9
-            "title_content",          # Slide 10
-            "image_left_text_right",  # Slide 11
-            "image_right_text_left",  # Slide 12
-            "title_content",          # Slide 13
-            "conclusion"              # Slide 14
-        ]
-        # Last slide is always conclusion
-        if slide_index == len(outline) - 1:  # Last slide
-            return "conclusion"
-        # Use pattern if we have enough slides, otherwise fall back to simpler layouts
-        if slide_index < len(layout_pattern):
-            return layout_pattern[slide_index]
-    
-    # For simple presentations or fallback
-    layout_options = ["title_content", "image_left_text_right", "image_right_text_left"]
-    
+        # For detailed, prefer layouts with more space for text
+        layout_options = content_layouts + image_layouts
+    else:
+        # For simple, vary the layouts more evenly
+        layout_options = all_layouts
+
     # Use more image layouts for slides with less content
-    if content_length <= 2:
-        layout_options = ["image_left_text_right", "image_right_text_left", "image_full"]
+    if content_length <= 2 and image_layouts:
+        layout_options = image_layouts + content_layouts # Prioritize image layouts
     
     # Use more content-focused layouts for slides with more content
-    if content_length >= 5:
-        layout_options = ["title_content", "two_column", "comparison"]
-    
-    # Return a random layout from the available options
+    if content_length >= 5 and content_layouts:
+        layout_options = content_layouts + image_layouts # Prioritize content layouts
+        
     return random.choice(layout_options)
 
 def create_title_slide(prs, presentation_title):
@@ -573,64 +562,64 @@ def get_theme_path(theme_name, theme_folder="themes"):
 
 
 def create_presentation(outline, presentation_title, detail_level, filename="presentation.pptx", theme_path=None):
+    """
+    Creates a PowerPoint presentation from a structured outline.
+    """
     try:
-        # Load the theme
+        # Load the theme from the specified path, if it exists.
         if theme_path and os.path.exists(theme_path):
             prs = Presentation(theme_path)
             
-            # DELETE ALL EXISTING SLIDES FROM THE TEMPLATE
-            for i in range(len(prs.slides) - 1, -1, -1):  # Delete backwards
+            # Delete all existing slides from the template.
+            for i in range(len(prs.slides) - 1, -1, -1):
                 rId = prs.slides._sldIdLst[i].rId
                 prs.part.drop_rel(rId)
                 del prs.slides._sldIdLst[i]
-                
         else:
+            # Create a blank presentation if no theme is found.
             prs = Presentation()
         
-        # NOW ADD YOUR SLIDES (title slide first)
+        # Add the main title slide.
         create_title_slide(prs, presentation_title)
         
-        # Create a temporary directory for downloaded images
+        # Create a temporary directory for downloaded images to avoid clutter.
         with tempfile.TemporaryDirectory() as temp_dir:
-            # Process each section of the outline
+            # Iterate through the outline to create each slide.
             for i, (section, points) in enumerate(outline.items()):
-                slide_index = i + 1  # +1 because we already created the title slide
+                slide_index = i + 1  # Offset by 1 for the title slide.
                 
-                # Determine the layout for this slide
-                layout = determine_slide_layout(slide_index, detail_level, len(points),outline)
+                # Determine the correct layout for the current slide.
+                # The 'section' variable holds the slide title and is passed to the layout function.
+                layout = determine_slide_layout(slide_index, detail_level, len(points), outline, section)
                 
                 print(f"Creating slide {slide_index}: {section} ({layout} layout)")
                 
-                # Create the slide based on the determined layout
+                # Create the slide based on the determined layout.
                 if layout == "title_content":
                     create_title_content_slide(prs, section, points)
                 
                 elif layout in ["image_left_text_right", "image_right_text_left", "image_full"]:
-                    # Search for relevant images
+                    # Search for relevant images for the slide.
                     queries = get_relevant_image_queries(presentation_title, section, points, detail_level == "detailed")
                     image_found = False
                     
                     for query in queries:
                         images = search_images(query, 3)
                         if images:
-                            # Download the first image
                             image_path = os.path.join(temp_dir, f"{section}_{images[0]['id']}.jpg")
                             if download_image(images[0]['download_url'], image_path):
                                 image_found = True
-                                
-                                # Create the appropriate slide layout
                                 if layout == "image_left_text_right":
                                     create_image_left_text_right_slide(prs, section, points, image_path)
                                 elif layout == "image_right_text_left":
                                     create_image_right_text_left_slide(prs, section, points, image_path)
                                 elif layout == "image_full":
                                     create_image_full_slide(prs, section, image_path)
-                                
                                 break
                     
-                    # Fallback to title_content if no image found
+                    # Fallback to a content-only slide if no image is found.
                     if not image_found:
-                        print(f"⚠️  No image found for '{section}', using title_content layout instead")
+                        print(f"⚠️ No image found for '{section}', using title_content layout instead.")
                         create_title_content_slide(prs, section, points)
                 
                 elif layout == "two_column":
@@ -640,15 +629,16 @@ def create_presentation(outline, presentation_title, detail_level, filename="pre
                     create_comparison_slide(prs, section, points)
                 
                 elif layout == "conclusion":
-                    create_title_content_slide(prs, section, points)
+                    create_conclusion_slide(prs, section, points)
         
-        # Save the presentation
+        # Save the completed presentation to the specified filename.
         prs.save(filename)
         print(f"✅ Presentation saved as: {filename}")
         return filename
-        
+    
     except Exception as e:
         print(f"❌ Error creating presentation: {e}")
+        # Re-raise the exception to be handled by the Flask app.
         raise
 
 def ensure_conclusion_slide(outline, presentation_title):
