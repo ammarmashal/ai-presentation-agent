@@ -91,9 +91,9 @@ def get_relevant_image_queries(presentation_title, slide_title, content, is_deta
         
         # Remove common stop words
         stop_words = {"the", "and", "or", "but", "in", "on", "at", "to", "for", 
-                     "of", "with", "by", "that", "this", "these", "those", "is",
-                     "are", "was", "were", "be", "been", "being", "have", "has",
-                     "had", "do", "does", "did", "will", "would", "could", "should"}
+                    "of", "with", "by", "that", "this", "these", "those", "is",
+                    "are", "was", "were", "be", "been", "being", "have", "has",
+                    "had", "do", "does", "did", "will", "would", "could", "should"}
         
         meaningful_words = [word for word in words if word not in stop_words]
         
@@ -160,9 +160,9 @@ def determine_slide_layout(slide_index, detail_level, content_length, outline, s
     if slide_index == 1:
         return "title_content"
 
-    # Available layouts, excluding 'image_full'
+    # Available layouts, excluding 'image_full' and 'comparison'
     image_layouts = ["image_left_text_right", "image_right_text_left"]
-    content_layouts = ["title_content", "two_column", "comparison"]
+    content_layouts = ["title_content", "two_column"]
     
     # Combine lists to create a full set of options
     all_layouts = image_layouts + content_layouts
@@ -533,17 +533,46 @@ def create_conclusion_slide(prs, section, points):
             p.level = 0
             p.alignment = PP_ALIGN.CENTER
     
-    # Add thank you message
+    return slide
+
+# Add a new function for the Thank You slide
+def create_thank_you_slide(prs):
+    """Create a separate Thank You slide"""
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+    
+    # Add background color
+    background = slide.shapes.add_shape(
+        MSO_SHAPE.RECTANGLE, Inches(0), Inches(0), 
+        prs.slide_width, prs.slide_height
+    )
+    background.fill.solid()
+    background.fill.fore_color.rgb = RGBColor(25, 25, 112)  # Dark blue background
+    background.line.fill.background()
+    
+    # Add Thank You text
     thank_you_left = Inches(1)
-    thank_you_top = Inches(6)
+    thank_you_top = Inches(2.5)
     thank_you_width = Inches(8)
-    thank_you_height = Inches(1)
+    thank_you_height = Inches(2)
     thank_you_box = slide.shapes.add_textbox(thank_you_left, thank_you_top, thank_you_width, thank_you_height)
     thank_you_frame = thank_you_box.text_frame
     thank_you_frame.text = "Thank You!"
-    thank_you_frame.paragraphs[0].font.size = Pt(24)
+    thank_you_frame.paragraphs[0].font.size = Pt(48)
     thank_you_frame.paragraphs[0].font.bold = True
+    thank_you_frame.paragraphs[0].font.color.rgb = RGBColor(255, 255, 255)  # White text
     thank_you_frame.paragraphs[0].alignment = PP_ALIGN.CENTER
+    
+    # Add smaller subtitle
+    subtitle_left = Inches(1)
+    subtitle_top = Inches(5)
+    subtitle_width = Inches(8)
+    subtitle_height = Inches(1)
+    subtitle_box = slide.shapes.add_textbox(subtitle_left, subtitle_top, subtitle_width, subtitle_height)
+    subtitle_frame = subtitle_box.text_frame
+    subtitle_frame.text = "Questions & Discussion"
+    subtitle_frame.paragraphs[0].font.size = Pt(24)
+    subtitle_frame.paragraphs[0].font.color.rgb = RGBColor(200, 200, 200)  # Light gray text
+    subtitle_frame.paragraphs[0].alignment = PP_ALIGN.CENTER
     
     return slide
 
@@ -625,11 +654,11 @@ def create_presentation(outline, presentation_title, detail_level, filename="pre
                 elif layout == "two_column":
                     create_two_column_slide(prs, section, points)
                 
-                elif layout == "comparison":
-                    create_comparison_slide(prs, section, points)
-                
                 elif layout == "conclusion":
                     create_conclusion_slide(prs, section, points)
+        
+        # Add Thank You slide at the end
+        create_thank_you_slide(prs)
         
         # Save the completed presentation to the specified filename.
         prs.save(filename)

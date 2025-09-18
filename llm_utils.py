@@ -76,9 +76,6 @@ def get_user_preferences():
     
     return topic, detail_level
 
-# In your llm_utils.py file
-
-# In your llm_utils.py file
 
 def get_presentation_outline(client, topic: str, detail_level: str = "simple") -> str:
     """
@@ -94,37 +91,64 @@ def get_presentation_outline(client, topic: str, detail_level: str = "simple") -
         prompt = f"""
         Generate a concise, professional presentation outline about **{topic}**. The presentation should have 10-12 slides. Adhere to the following strict formatting rules:
         
-        1. The first slide is a title slide. The title should be a professional, concise version of the main topic.
-        2. The second slide is "Introduction". It must have 3-5 full sentences of introductory text, not bullet points.
-        3. All subsequent slides must have a main title.
-        4. Under each slide title, provide exactly **5-7 very short bullet points**. Each bullet point should be a concise keyword or a short, impactful phrase, with no additional explanation.
-        5. The final slide must be titled "**Conclusion**" and summarize the key takeaways.
-        
-        Return the output in plain text. Do not include slide numbers.
+        1. The first slide is "**Introduction**". It must have 2-3 full sentences of introductory text, not bullet points.
+        2. Each subsequent slide title must be on its own line surrounded by double asterisks: **Slide Title**
+        3. All other slides must have exactly 5-7 very short bullet points
+        4. Each bullet point should start with • and be a concise keyword/phrase
+        5. The final slide must be "**Conclusion**"
+
+        EXAMPLE:
+        **Introduction**
+        This is the introductory text about the topic.
+
+        **Core Concepts**
+        • Concept 1
+        • Concept 2  
+        • Concept 3
+        • Concept 4
+        • Concept 5
+
+        **Applications**
+        • App 1
+        • App 2
+        • App 3
+        • App 4
+
+        **Conclusion**
+        • Summary point 
+
+        Now generate the outline for: {topic}
         """
     
     else:  # detailed
+        # In get_presentation_outline function, update the prompt:
         prompt = f"""
-        Generate a comprehensive, professional presentation outline about **{topic}**. The presentation should have 12-15 slides. Adhere to the following strict formatting rules:
+        Generate a comprehensive, professional presentation outline about **{topic}**. 
 
-        **EXAMPLE OF A PERFECTLY FORMATTED SLIDE:**
-        **Core Components**
-        - The system architecture has three main components for data flow.
-        - A scalable framework handles all processing to reduce latency.
-        - The user interface provides real-time dashboards for key metrics.
-        
-        **END OF EXAMPLE**
+        STRICT FORMATTING RULES:
+        1. The first slide must be "**Introduction**" with 3-5 full sentences (no bullet points)
+        2. Each subsequent slide title must be on its own line surrounded by double asterisks: **Slide Title**
+        3. Under each slide title, provide exactly 2-3 detailed bullet points
+        4. Each bullet point must start with • and be a meaningful sentence (15-30 words)
+        5. The final slide must be "**Conclusion**"
 
-        Now, generate the full outline based on the following rules:
-        1. The first slide is a title slide. The title should be a professional, concise version of the main topic.
-        2. The second slide is "Introduction". It must have 3-5 full sentences of introductory text, not bullet points.
-        3. All subsequent slides must have a main title.
-        4. Under each slide title, provide exactly **2-3 detailed bullet points**.
-        5. Each bullet point must be a single, meaningful sentence of about 10 words.
-        6. The final slide must be titled "**Conclusion**" and must have detailed bullet points as described above.
+        EXAMPLE:
+        **Introduction**
+        This is the introductory text with full sentences about the topic. It provides context and sets the stage for the presentation. The introduction should engage the audience.
 
-        Return the output in plain text. Do not include slide numbers.
-        """
+        **Core Concepts**
+        • First detailed bullet point explaining a core concept
+        • Second detailed bullet point with additional information
+        • Third bullet point completing the explanation
+
+        **Implementation**
+        • First implementation step or consideration
+        • Second important implementation aspect
+
+        **Conclusion**
+        • Summary of key takeaways
+
+        Now generate the outline for: {topic}"""
 
     try:
         response = client.chat.completions.create(
@@ -140,85 +164,133 @@ def get_presentation_outline(client, topic: str, detail_level: str = "simple") -
     except Exception as e:
         raise Exception(f"❌ Failed to generate outline: {str(e)}")
 
+def process_bullet_points(content_lines):
+    """
+    Process content lines into structured bullet points with proper level detection
+    """
+    bullets = []
+    
+    for line in content_lines:
+        if not line.strip():
+            continue
+            
+        # Detect indentation level (2 spaces = 1 level)
+        leading_spaces = len(line) - len(line.lstrip())
+        level = leading_spaces // 2  # 2 spaces per level
+        
+        # Clean the line from markdown and bullet indicators
+        cleaned = clean_markdown(line.strip())
+        
+        # Remove bullet indicators (•, -, *, numbered)
+        cleaned = re.sub(r'^[•\-*]\s+', '', cleaned)  # Remove bullet symbols
+        cleaned = re.sub(r'^\d+[\.\)]\s+', '', cleaned)  # Remove numbered bullets
+        
+        if cleaned:  # Only add non-empty content
+            bullets.append({
+                "text": cleaned,
+                "level": max(0, min(level, 3))  # Limit levels to 0-3
+            })
+    
+    return bullets
+
+def clean_markdown(text):
+    """
+    Remove markdown formatting from text (preserve structure for parsing)
+    """
+    if not text:
+        return text
+    
+    # Remove bold/italic but preserve for title detection
+    text = re.sub(r'\*\*(.*?)\*\*', r'\1', text)  # Remove **bold**
+    text = re.sub(r'\*(.*?)\*', r'\1', text)      # Remove *italic*
+    
+    # Remove other markdown elements
+    text = re.sub(r'#+\s*', '', text)  # Remove headers
+    text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)  # Remove links
+    text = re.sub(r'!\[([^\]]+)\]\([^)]+\)', '', text)  # Remove images
+    
+    # Clean up extra spaces
+    text = re.sub(r'\s+', ' ', text).strip()
+    
+    return text
 def parse_llm_output_to_outline(llm_output: str):
     """
-    Parse LLM output to a structured outline and extract the main title
-    Returns: (title, outline_dict)
+    Parse LLM output with strict slide boundary detection based on **Title** markers
     """
     outline = {}
-    current_section = None
-    default_section = "Content"
+    current_slide = None
+    slide_content = []
     main_title = None
+    
+    # Pattern to detect slide titles: **Title** on its own line
+    slide_pattern = r'^\s*(?:\*\*([^*]+)\*\*|#\s+([^#]+))$'
     
     lines = llm_output.splitlines()
     
-    for i, raw_line in enumerate(lines):
-        if not raw_line.strip():
+    for i, line in enumerate(lines):
+        line = line.strip()
+        if not line:
             continue
-
-        stripped = raw_line.strip()
-
-        # Extract main title from the first header found
-        if main_title is None:
-            header_match = re.match(r'^\*\*(.+?)\*\*$', stripped)
-            if header_match:
-                main_title = header_match.group(1).strip()
-                # Skip adding this to outline as it's the main title
-                continue
-
-        # Standalone section headers (after the main title)
-        header_match = re.match(r'^\*\*(.+?)\*\*$', stripped)
-        if header_match:
-            current_section = header_match.group(1).strip()
-            outline[current_section] = []
-            continue
-
-        slide_match = re.match(r'^Slide\s+\d+:\s*(.+)$', stripped, flags=re.IGNORECASE)
-        if slide_match:
-            current_section = slide_match.group(1).strip()
-            outline[current_section] = []
-            continue
-
-        # Bullets (keep leading whitespace to compute level)
-        bullet_match = re.match(r'^[ \t]*[-*•]\s+(.*)$', raw_line)
-        if bullet_match:
-            # Compute level from leading whitespace
-            leading_ws_len = len(raw_line) - len(raw_line.lstrip(' \t'))
-            ws_prefix = raw_line[:leading_ws_len]
-            tabs = ws_prefix.count('\t')
-            spaces = ws_prefix.count(' ')
-            level = tabs + (spaces // 2)  # 2 spaces = one level
-
-            text = bullet_match.group(1).strip()
-            # Remove surrounding bold if present on the bullet text itself
-            text = re.sub(r'^\*\*(.+?)\*\*$', r'\1', text)
-
-            if not current_section:
-                current_section = default_section
-                outline.setdefault(current_section, [])
-
-            outline[current_section].append({
-                "text": text,
-                "level": max(0, min(level, 8))  # PowerPoint levels 0..8
-            })
-            continue
-
-        # Non-bullet content: treat as section if none exists yet, else as level-0 point
-        if not current_section:
-            current_section = stripped
-            outline[current_section] = []
+        
+        # Check if this is a slide title (surrounded by **)
+        title_match = re.match(slide_pattern, line)
+        
+        if title_match:
+            # Save previous slide content if exists
+            if current_slide and slide_content:
+                outline[current_slide] = process_bullet_points(slide_content)
+            
+            # Start new slide
+            current_slide = title_match.group(1).strip()
+            slide_content = []
+            
+            # First meaningful title becomes main title if not set
+            if main_title is None and current_slide and current_slide.lower() != "introduction":
+                main_title = current_slide
+            
         else:
-            outline[current_section].append({"text": stripped, "level": 0})
-
-    # If no main title was found in headers, use the first line or a default
-    if main_title is None and lines:
-        first_line = lines[0].strip()
-        if first_line:
-            main_title = first_line
-            # Remove any markdown formatting from the title
-            main_title = re.sub(r'^\*\*(.+?)\*\*$', r'\1', main_title)
+            # Check if this might be the main title (first meaningful line)
+            if main_title is None and current_slide is None and line and not re.match(r'^[•\-*]', line):
+                main_title = clean_markdown(line)
+                continue
+                
+            # Add content to current slide
+            if current_slide is not None:
+                slide_content.append(line)
+            else:
+                # Content before first slide - add to introduction if it exists later
+                pass
+    
+    # Add the final slide
+    if current_slide and slide_content:
+        outline[current_slide] = process_bullet_points(slide_content)
+    
+    # If no main title found, use first slide title or default
+    if not main_title:
+        if outline:
+            main_title = next(iter(outline.keys()))
+        else:
+            main_title = "Presentation"
+    
+    # Ensure Introduction slide exists and is first
+    if "Introduction" not in outline and any("introduction" in key.lower() for key in outline.keys()):
+        # Rename existing introduction-like slide
+        for key in list(outline.keys()):
+            if "introduction" in key.lower():
+                outline["Introduction"] = outline.pop(key)
+                break
+    
+    # Reorder to ensure Introduction is first if it exists
+    if "Introduction" in outline:
+        ordered_outline = {"Introduction": outline["Introduction"]}
+        for key, value in outline.items():
+            if key != "Introduction":
+                ordered_outline[key] = value
+        outline = ordered_outline
     
     return main_title, outline
+
+
 
 def get_mock_outline(topic, detail_level):
     """Return a mock outline for testing when API is unavailable"""
@@ -289,6 +361,8 @@ def get_mock_outline(topic, detail_level):
         content += "- Future outlook and potential developments in the field"
         
         return content
+
+
 
 def generate_outline(topic=None, detail_level=None):
     """Main function to generate an outline with user preferences or provided arguments."""

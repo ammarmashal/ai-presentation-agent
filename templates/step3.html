@@ -1,53 +1,94 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Presentation Generator - Step 3</title>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
+        /* Modern, Professional Color Palette */
         :root {
-            --primary-color: #3b82f6;
-            --primary-dark: #2563eb;
-            --background-color: #f3f4f6;
-            --card-background: #ffffff;
-            --text-color: #333;
-            --border-color: #e5e7eb;
-            --success-color: #10b981;
-            --error-color: #ef4444;
-            --shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+            --primary-color: #4CAF50;
+            --primary-dark: #45a049;
+            --background-overlay: rgba(0, 0, 0, 0.7); /* Dark overlay for readability */
+            --card-background: rgba(255, 255, 255, 0.1); /* Semi-transparent white card */
+            --text-color: #fff;
+            --label-color: #fff;
+            --input-background: rgba(255, 255, 255, 0.9);
+            --button-text-color: #fff;
+            --border-color: #ddd;
+            --shadow: 0 8px 16px rgba(0, 0, 0, 0.2);
+            --font-family: 'Roboto', sans-serif;
+            --success-bg: rgba(16, 185, 129, 0.7);
+            --success-color: #fff;
+            --error-bg: rgba(239, 68, 68, 0.7);
+            --error-color: #fff;
         }
+
         body {
-            font-family: 'Roboto', sans-serif;
-            background-color: var(--background-color);
+            font-family: var(--font-family);
             margin: 0;
-            padding: 40px;
+            padding: 0;
             color: var(--text-color);
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            text-shadow: 1px 1px 3px rgba(0, 0, 0, 0.5);
+            background-image: url('{{ url_for("static", filename="images/background3.webp") }}');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+            background-attachment: fixed;
+            position: relative;
         }
+
+        body::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: var(--background-overlay);
+            z-index: -1;
+        }
+
         .container {
+            width: 100%;
             max-width: 800px;
-            margin: 0 auto;
+            padding: 40px;
             background: var(--card-background);
-            padding: 30px;
+            backdrop-filter: blur(5px);
             border-radius: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
             box-shadow: var(--shadow);
+            animation: fadeIn 1s ease-out;
+            margin-top: 20px;
+            margin-bottom: 20px;
         }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
         .header {
             text-align: center;
-            color: var(--primary-dark);
+            color: #fff;
             font-size: 2.5rem;
             font-weight: 700;
             margin-bottom: 10px;
         }
+
         .subheader {
             font-size: 1.5rem;
             font-weight: 500;
             margin-bottom: 30px;
-            color: #666;
+            color: #fff;
             text-align: center;
         }
+
         .info-box {
-            background-color: #e5e7eb;
+            background-color: rgba(255, 255, 255, 0.1);
             padding: 20px;
             border-radius: 8px;
             margin-bottom: 20px;
@@ -56,20 +97,31 @@
             gap: 20px;
             text-align: center;
             font-weight: 500;
+            border: 1px solid rgba(255, 255, 255, 0.3);
         }
+        
+        .info-box p {
+            margin: 0;
+        }
+
         .outline-container {
-            border: 1px solid var(--border-color);
+            border: 1px solid rgba(255, 255, 255, 0.3);
             border-radius: 8px;
             padding: 20px;
             margin-bottom: 20px;
+            background-color: rgba(0, 0, 0, 0.3);
+            backdrop-filter: blur(5px);
         }
+
         .outline-section {
             margin-bottom: 10px;
-            border-bottom: 1px solid var(--border-color);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
         }
+
         .outline-section:last-child {
             border-bottom: none;
         }
+
         .outline-header {
             font-weight: bold;
             font-size: 1.2rem;
@@ -77,6 +129,7 @@
             padding: 15px 0;
             position: relative;
         }
+
         .outline-header::after {
             content: '+';
             font-size: 1.5rem;
@@ -85,10 +138,13 @@
             top: 50%;
             transform: translateY(-50%);
             transition: transform 0.3s ease;
+            color: var(--primary-color);
         }
+
         .outline-header.expanded::after {
             transform: translateY(-50%) rotate(45deg);
         }
+
         .outline-content {
             margin-left: 20px;
             max-height: 0;
@@ -96,15 +152,18 @@
             transition: max-height 0.4s ease-out;
             padding-bottom: 0;
         }
+
         .outline-content.show {
-            max-height: 500px; /* A large value to allow content to expand */
+            max-height: 500px;
             padding-bottom: 15px;
         }
+
         .nav-buttons {
             display: flex;
             justify-content: space-between;
             margin-top: 20px;
         }
+
         .btn {
             padding: 15px 30px;
             border: none;
@@ -116,46 +175,56 @@
             display: inline-block;
             transition: background-color 0.3s ease, transform 0.2s ease;
             text-align: center;
+            color: var(--button-text-color);
+            text-shadow: none;
         }
+
         .btn-primary {
             background-color: var(--primary-color);
-            color: white;
         }
+
         .btn-primary:hover {
             background-color: var(--primary-dark);
             transform: translateY(-2px);
         }
+
         .btn-secondary {
             background-color: #6c757d;
             color: white;
         }
+
         .btn-secondary:hover {
             background-color: #5a6268;
             transform: translateY(-2px);
         }
+
         .download-btn {
-            background-color: var(--success-color);
-            color: white;
+            background-color: #007bff;
         }
+
         .download-btn:hover {
-            background-color: #059669;
+            background-color: #0056b3;
         }
+
         .error {
             color: var(--error-color);
-            background-color: rgba(239, 68, 68, 0.1);
+            background-color: var(--error-bg);
             padding: 10px;
             border-radius: 8px;
             margin-bottom: 20px;
             text-align: left;
+            border: 1px solid rgba(239, 68, 68, 0.8);
         }
+
         .success {
             color: var(--success-color);
-            background-color: rgba(16, 185, 129, 0.1);
+            background-color: var(--success-bg);
             padding: 15px;
             border-radius: 8px;
             margin-bottom: 20px;
             text-align: center;
             font-weight: bold;
+            border: 1px solid rgba(16, 185, 129, 0.8);
         }
     </style>
     <script>
