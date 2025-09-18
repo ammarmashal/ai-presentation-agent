@@ -22,40 +22,50 @@ def initialize_groq_client():
 
 def extract_topic_from_input(user_input):
     """
-    Clean up user input to extract the main topic
+    Extract the main topic from user input more intelligently
     """
     if not user_input:
         return "Artificial Intelligence"
     
-    # Remove polite phrases and questions
-    patterns_to_remove = [
-        r"please(\s+(can you|could you|i want))?",
-        r"can you",
-        r"could you",
-        r"i want",
-        r"i need",
-        r"generate",
-        r"create",
-        r"make",
-        r"about",
-        r"on",
-        r"a presentation",
-        r"a ppt",
-        r"powerpoint",
-        r"slides",
-        r"presentation"
+    # Convert to lowercase for processing
+    user_input = user_input.lower().strip()
+    
+    # Common patterns that indicate the actual topic follows
+    topic_patterns = [
+        r'(?:about|on|regarding|concerning|related to|for)\s+([^\.\?\!]+)',
+        r'(?:presentation|ppt|slides|talk|speech)\s+(?:about|on|regarding)\s+([^\.\?\!]+)',
+        r'(?:give me|create|generate|make|build)\s+(?:a\s+)?(?:presentation|ppt|slides)\s+(?:about|on|regarding)?\s*([^\.\?\!]+)',
+        r'(?:i want|i need)\s+(?:a\s+)?(?:presentation|ppt|slides)\s+(?:about|on|regarding)?\s*([^\.\?\!]+)'
     ]
     
-    cleaned = user_input.lower()
-    for pattern in patterns_to_remove:
-        cleaned = re.sub(pattern, "", cleaned)
+    # Try to extract topic using patterns
+    for pattern in topic_patterns:
+        match = re.search(pattern, user_input)
+        if match:
+            topic = match.group(1).strip()
+            # Remove any remaining command words
+            topic = re.sub(r'^(?:about|on|regarding|for|a|the)\s+', '', topic)
+            # Capitalize properly (title case)
+            topic = ' '.join(word.capitalize() for word in topic.split())
+            return topic if topic else "Artificial Intelligence"
     
-    # Remove extra spaces and punctuation
+    # Fallback: remove common command phrases and keep the rest
+    command_phrases = [
+        'give me', 'can you', 'could you', 'please', 'create', 'generate',
+        'make', 'build', 'i want', 'i need', 'a presentation', 'a ppt',
+        'powerpoint', 'slides', 'presentation', 'about', 'on', 'regarding',
+        'for', 'the'
+    ]
+    
+    cleaned = user_input
+    for phrase in command_phrases:
+        cleaned = re.sub(r'\b' + phrase + r'\b', '', cleaned)
+    
+    # Clean up and capitalize
     cleaned = re.sub(r'[^\w\s]', '', cleaned)
     cleaned = cleaned.strip()
-    
-    # Capitalize first letter of each word
-    cleaned = cleaned.title()
+    if cleaned:
+        cleaned = ' '.join(word.capitalize() for word in cleaned.split())
     
     return cleaned if cleaned else "Artificial Intelligence"
 
@@ -222,53 +232,82 @@ def parse_llm_output_to_outline(llm_output: str):
     slide_content = []
     main_title = None
     
-    # Pattern to detect slide titles: **Title** on its own line
+    # Pattern to detect slide titles: both **Title** and # Title formats
     slide_pattern = r'^\s*(?:\*\*([^*]+)\*\*|#\s+([^#]+))$'
     
     lines = llm_output.splitlines()
+    
+    # First, try to find the actual presentation title by skipping LLM's intro phrases
+    intro_phrases = [
+        'here is', 'this is', 'below is', 'following is',
+        'presentation outline', 'outline for', 'generated outline',
+        'i have', 'i\'ve created', 'the following'
+    ]
     
     for i, line in enumerate(lines):
         line = line.strip()
         if not line:
             continue
         
-        # Check if this is a slide title (surrounded by **)
+        line_lower = line.lower()
+        
+        # Skip LLM's introductory phrases
+        if any(phrase in line_lower for phrase in intro_phrases):
+            continue
+            
+        # Look for the first meaningful line that could be a title
+        if (len(line) > 3 and len(line) < 80 and  # Reasonable title length
+            not line.startswith(('#', '*', '-', '•', '1.', '2.', '3.')) and  # Not a bullet, header, or number
+            not line.endswith((':', '-')) and  # Not a label or separator
+            not re.match(r'^\d+\.', line) and  # Not a numbered list
+            not re.match(r'^[•\-*]', line)):  # Not a bullet point
+            
+            # Clean the line and use as main title
+            main_title = clean_markdown(line)
+            break
+    
+    # Now parse the slides
+    for i, line in enumerate(lines):
+        line = line.strip()
+        if not line:
+            continue
+        
+        # Check if this is a slide title (either **Title** or # Title)
         title_match = re.match(slide_pattern, line)
         
         if title_match:
+            # Extract title from either capture group
+            slide_title = title_match.group(1) or title_match.group(2)
+            slide_title = slide_title.strip()
+            
             # Save previous slide content if exists
             if current_slide and slide_content:
                 outline[current_slide] = process_bullet_points(slide_content)
             
             # Start new slide
-            current_slide = title_match.group(1).strip()
+            current_slide = slide_title
             slide_content = []
             
-            # First meaningful title becomes main title if not set
-            if main_title is None and current_slide and current_slide.lower() != "introduction":
-                main_title = current_slide
-            
         else:
-            # Check if this might be the main title (first meaningful line)
-            if main_title is None and current_slide is None and line and not re.match(r'^[•\-*]', line):
-                main_title = clean_markdown(line)
-                continue
-                
             # Add content to current slide
             if current_slide is not None:
                 slide_content.append(line)
-            else:
-                # Content before first slide - add to introduction if it exists later
-                pass
     
     # Add the final slide
     if current_slide and slide_content:
         outline[current_slide] = process_bullet_points(slide_content)
     
-    # If no main title found, use first slide title or default
+    # If no main title found, use the first slide title or user topic
     if not main_title:
         if outline:
-            main_title = next(iter(outline.keys()))
+            # Use the first non-introduction slide title
+            for slide_title in outline.keys():
+                if "introduction" not in slide_title.lower():
+                    main_title = slide_title
+                    break
+            # If all slides are introduction-like, use the first one
+            if not main_title:
+                main_title = next(iter(outline.keys()))
         else:
             main_title = "Presentation"
     
