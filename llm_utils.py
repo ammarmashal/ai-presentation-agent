@@ -138,7 +138,7 @@ def get_presentation_outline(client, topic: str, detail_level: str = "simple") -
         STRICT FORMATTING RULES:
         1. The first slide must be "**Introduction**" with 3-5 full sentences (no bullet points)
         2. Each subsequent slide title must be on its own line surrounded by double asterisks: **Slide Title**
-        3. Under each slide title, provide exactly 2-3 detailed bullet points
+        3. Under each slide title, provide exactly 2 detailed bullet points
         4. Each bullet point must start with • and be a meaningful sentence (15-30 words)
         5. The final slide must be "**Conclusion**"
 
@@ -330,7 +330,7 @@ def parse_llm_output_to_outline(llm_output: str):
     return main_title, outline
 
 
-
+# used when Groq API is unavailable
 def get_mock_outline(topic, detail_level):
     """Return a mock outline for testing when API is unavailable"""
     if detail_level == "simple":
