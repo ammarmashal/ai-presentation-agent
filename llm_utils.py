@@ -99,15 +99,19 @@ def get_presentation_outline(client, topic: str, detail_level: str = "simple") -
 
     if detail_level == "simple":
         prompt = f"""
-        Generate a concise, professional presentation outline about **{topic}**. The presentation should have 10-12 slides. Adhere to the following strict formatting rules:
+        Generate a concise, professional presentation outline about **{topic}**. The presentation should have 30 slides. Adhere to the following strict formatting rules:
         
-        1. The first slide is "**Introduction**". It must have 2-3 full sentences of introductory text, not bullet points.
-        2. Each subsequent slide title must be on its own line surrounded by double asterisks: **Slide Title**
-        3. All other slides must have exactly 5-7 very short bullet points
-        4. Each bullet point should start with • and be a concise keyword/phrase
-        5. The final slide must be "**Conclusion**"
+        1. The first line of your response must be a concise, one-line of 1-2 words title for the presentation, formatted with a single asterisk on each side, like this: *Presentation Title*.
+        2. The second line must be blank.
+        3. The first slide is "**Introduction**". It must have 2-3 full sentences of introductory text, not bullet points.
+        4. Each subsequent slide title must be on its own line surrounded by double asterisks: **Slide Title**
+        5. All other slides must have exactly 8-10 very short bullet points
+        6. Each bullet point should start with • and be a concise keyword/phrase
+        7. The final slide must be "**Conclusion**"
 
         EXAMPLE:
+        *Digital Twins*
+
         **Introduction**
         This is the introductory text about the topic.
 
@@ -117,32 +121,43 @@ def get_presentation_outline(client, topic: str, detail_level: str = "simple") -
         • Concept 3
         • Concept 4
         • Concept 5
+        • Concept 6
+        • Concept 7
+
 
         **Applications**
         • App 1
         • App 2
         • App 3
         • App 4
+        • App 5
+        • App 6
+        • App 7
+
 
         **Conclusion**
-        • Summary point 
+        • Summary points 
 
         Now generate the outline for: {topic}
         """
     
     else:  # detailed
-        # In get_presentation_outline function, update the prompt:
         prompt = f"""
         Generate a comprehensive, professional presentation outline about **{topic}**. 
 
         STRICT FORMATTING RULES:
-        1. The first slide must be "**Introduction**" with 3-5 full sentences (no bullet points)
-        2. Each subsequent slide title must be on its own line surrounded by double asterisks: **Slide Title**
-        3. Under each slide title, provide exactly 2 detailed bullet points
-        4. Each bullet point must start with • and be a meaningful sentence (15-30 words)
-        5. The final slide must be "**Conclusion**"
+        1. The first line of your response must be a concise, one-line of 1-2 words title for the presentation, formatted with a single asterisk on each side, like this: *Presentation Title*.
+        2. The second line must be blank.
+        3. The first slide must be "**Introduction**" with 3-5 full sentences (no bullet points)
+        4. Each subsequent slide title must be on its own line surrounded by double asterisks: **Slide Title**
+        5. Under each slide title, provide exactly 2 detailed bullet points
+        6. Each bullet point must start with • and be a meaningful sentence (15-30 words)
+        7. The final slide must be "**Conclusion**"
+        8. The presentation should have 12-15 slides total
 
         EXAMPLE:
+        *Digital Twins*
+
         **Introduction**
         This is the introductory text with full sentences about the topic. It provides context and sets the stage for the presentation. The introduction should engage the audience.
 
@@ -156,7 +171,7 @@ def get_presentation_outline(client, topic: str, detail_level: str = "simple") -
         • Second important implementation aspect
 
         **Conclusion**
-        • Summary of key takeaways
+        • Summary point about the presentation content about 20-30 words 
 
         Now generate the outline for: {topic}"""
 
@@ -225,109 +240,70 @@ def clean_markdown(text):
     return text
 def parse_llm_output_to_outline(llm_output: str):
     """
-    Parse LLM output with strict slide boundary detection based on **Title** markers
+    Parses LLM output to extract a presentation title and the slide outline.
     """
+    lines = llm_output.splitlines()
+    presentation_title = ""
     outline = {}
+
+    # Extract the presentation title from the first line
+    if lines:
+        first_line = lines[0].strip()
+        title_match = re.match(r'^\*(.+?)\*$', first_line)
+        if title_match:
+            presentation_title = title_match.group(1).strip()
+            # Remove the title and blank line from the content
+            content_lines = lines[2:] 
+        else:
+            # Fallback if title format is not matched
+            presentation_title = "Presentation"
+            content_lines = lines
+    else:
+        presentation_title = "Presentation"
+        content_lines = []
+
     current_slide = None
     slide_content = []
-    main_title = None
     
-    # Pattern to detect slide titles: both **Title** and # Title formats
+    # Pattern to detect slide titles: **Title** or # Title formats
     slide_pattern = r'^\s*(?:\*\*([^*]+)\*\*|#\s+([^#]+))$'
     
-    lines = llm_output.splitlines()
-    
-    # First, try to find the actual presentation title by skipping LLM's intro phrases
-    intro_phrases = [
-        'here is', 'this is', 'below is', 'following is',
-        'presentation outline', 'outline for', 'generated outline',
-        'i have', 'i\'ve created', 'the following'
-    ]
-    
-    for i, line in enumerate(lines):
+    for line in content_lines:
         line = line.strip()
         if not line:
             continue
         
-        line_lower = line.lower()
-        
-        # Skip LLM's introductory phrases
-        if any(phrase in line_lower for phrase in intro_phrases):
-            continue
-            
-        # Look for the first meaningful line that could be a title
-        if (len(line) > 3 and len(line) < 80 and  # Reasonable title length
-            not line.startswith(('#', '*', '-', '•', '1.', '2.', '3.')) and  # Not a bullet, header, or number
-            not line.endswith((':', '-')) and  # Not a label or separator
-            not re.match(r'^\d+\.', line) and  # Not a numbered list
-            not re.match(r'^[•\-*]', line)):  # Not a bullet point
-            
-            # Clean the line and use as main title
-            main_title = clean_markdown(line)
-            break
-    
-    # Now parse the slides
-    for i, line in enumerate(lines):
-        line = line.strip()
-        if not line:
-            continue
-        
-        # Check if this is a slide title (either **Title** or # Title)
+        # Check if this is a slide title
         title_match = re.match(slide_pattern, line)
         
         if title_match:
-            # Extract title from either capture group
             slide_title = title_match.group(1) or title_match.group(2)
             slide_title = slide_title.strip()
             
-            # Save previous slide content if exists
-            if current_slide and slide_content:
+            # Save previous slide content if it exists
+            if current_slide:
                 outline[current_slide] = process_bullet_points(slide_content)
             
-            # Start new slide
+            # Start a new slide
             current_slide = slide_title
             slide_content = []
             
         else:
-            # Add content to current slide
-            if current_slide is not None:
+            # Add content to the current slide
+            if current_slide:
                 slide_content.append(line)
     
     # Add the final slide
-    if current_slide and slide_content:
+    if current_slide:
         outline[current_slide] = process_bullet_points(slide_content)
     
-    # If no main title found, use the first slide title or user topic
-    if not main_title:
-        if outline:
-            # Use the first non-introduction slide title
-            for slide_title in outline.keys():
-                if "introduction" not in slide_title.lower():
-                    main_title = slide_title
-                    break
-            # If all slides are introduction-like, use the first one
-            if not main_title:
-                main_title = next(iter(outline.keys()))
-        else:
-            main_title = "Presentation"
-    
-    # Ensure Introduction slide exists and is first
-    if "Introduction" not in outline and any("introduction" in key.lower() for key in outline.keys()):
-        # Rename existing introduction-like slide
-        for key in list(outline.keys()):
-            if "introduction" in key.lower():
-                outline["Introduction"] = outline.pop(key)
-                break
-    
-    # Reorder to ensure Introduction is first if it exists
+    # Ensure Introduction slide is the first if it exists
     if "Introduction" in outline:
-        ordered_outline = {"Introduction": outline["Introduction"]}
-        for key, value in outline.items():
-            if key != "Introduction":
-                ordered_outline[key] = value
+        ordered_outline = {"Introduction": outline.pop("Introduction")}
+        ordered_outline.update(outline)
         outline = ordered_outline
     
-    return main_title, outline
+    return presentation_title, outline
 
 
 # used when Groq API is unavailable
@@ -406,37 +382,29 @@ def get_mock_outline(topic, detail_level):
 def generate_outline(topic=None, detail_level=None):
     """Main function to generate an outline with user preferences or provided arguments."""
     try:
-        # Use provided arguments or get user preferences
         if not topic or not detail_level:
             user_topic_input, detail_level = get_user_preferences()
-            # Extract clean topic from user input for the prompt
             topic = extract_topic_from_input(user_topic_input)
         
-        # Initialize client and generate outline
         client = initialize_groq_client()
         outline_text = get_presentation_outline(client, topic, detail_level)
         
         print(f"\nGenerated {detail_level} outline:\n")
         print(outline_text)
         
-        # Parse to dictionary and extract title
+        # This line is correct, it expects two return values
         presentation_title, outline_dict = parse_llm_output_to_outline(outline_text)
-        
-        # If we couldn't extract a title, use the cleaned topic
-        if not presentation_title:
-            presentation_title = topic
         
         print(f"\nPresentation Title: {presentation_title}")
         print(f"Parsed Outline Structure ({len(outline_dict)} slides):")
         for section, points in outline_dict.items():
             print(f"• {section}: {len(points)} bullet points")
         
-        # Validate slide count
         slide_count = len(outline_dict)
         if detail_level == "simple" and not (7 <= slide_count <= 12):
-            print(f"⚠️  Warning: Simple presentation has {slide_count} slides (expected 7-12)")
+            print(f"⚠️ Warning: Simple presentation has {slide_count} slides (expected 7-12)")
         elif detail_level == "detailed" and not (10 <= slide_count <= 15):
-            print(f"⚠️  Warning: Detailed presentation has {slide_count} slides (expected 10-15)")
+            print(f"⚠️ Warning: Detailed presentation has {slide_count} slides (expected 10-15)")
         
         return outline_dict, presentation_title
         
@@ -444,17 +412,14 @@ def generate_outline(topic=None, detail_level=None):
         print(f"❌ Error: {e}")
         print("Using mock data instead...")
         
-        # Use mock data if API fails
         if not topic or not detail_level:
             user_topic_input, detail_level = get_user_preferences()
             topic = extract_topic_from_input(user_topic_input)
         
         outline_text = get_mock_outline(topic, detail_level)
-        presentation_title, outline_dict = parse_llm_output_to_outline(outline_text)
         
-        # If we couldn't extract a title, use the cleaned topic
-        if not presentation_title:
-            presentation_title = topic
+        # Ensure this call also returns two values
+        presentation_title, outline_dict = parse_llm_output_to_outline(outline_text)
         
         print(f"\nMock {detail_level} outline:\n")
         print(outline_text)

@@ -15,16 +15,17 @@ import tempfile
 from collections import Counter
 from llm_utils import generate_outline
 import json
-from pptx.enum.shapes import MSO_SHAPE
-from pptx.enum.dml import MSO_LINE
-from pptx.enum.text import PP_ALIGN
+from pptx.enum.dml import MSO_LINE, MSO_FILL_TYPE, MSO_FILL
 from PIL import Image
-
+from PIL import Image as PILImage
+import io
 
 # Load environment variables
 load_dotenv()
 UNSPLASH_ACCESS_KEY = os.getenv("UNSPLASH_ACCESS_KEY")
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+
+
 
 
 def hex_to_rgb(hex_color):
@@ -246,13 +247,6 @@ def apply_color_theme(prs, color_palette):
     return primary_rgb
 
 
-
-
-
-
-
-
-
 def search_images(query, count=5):
     """
     Search for images using Unsplash API
@@ -305,73 +299,19 @@ def download_image(image_url, filename):
         print(f"❌ Error downloading image: {e}")
         return False
 
-def get_relevant_image_queries(presentation_title, slide_title, content, is_detailed=False):
-    """
-    Generate relevant search queries for images based on presentation content
-    For detailed presentations, use the entire LLM content
-    """
+def get_relevant_image_queries(title, section, points, is_detailed):
     queries = []
-    
-    if is_detailed:
-        # For detailed presentations, use the entire content from LLM
-        content_text = " ".join([point["text"] for point in content])
-        all_text = f"{presentation_title} {slide_title} {content_text}"
-        
-        # Extract meaningful words (nouns, adjectives)
-        words = re.findall(r'\b[a-zA-Z]{4,}\b', all_text.lower())
-        
-        # Remove common stop words
-        stop_words = {"the", "and", "or", "but", "in", "on", "at", "to", "for", 
-                    "of", "with", "by", "that", "this", "these", "those", "is",
-                    "are", "was", "were", "be", "been", "being", "have", "has",
-                    "had", "do", "does", "did", "will", "would", "could", "should"}
-        
-        meaningful_words = [word for word in words if word not in stop_words]
-        
-        # Get the most frequent words
-        word_counts = Counter(meaningful_words)
-        most_common = [word for word, count in word_counts.most_common(8)]
-        
-        queries.extend(most_common)
-        
-        # Add combinations
-        for word in most_common[:3]:
-            queries.append(f"{presentation_title} {word}")
-            queries.append(f"{slide_title} {word}")
-    else:
-        # For simple presentations, use a more targeted approach
-        content_text = " ".join([point["text"] for point in content])
-        all_text = f"{slide_title} {content_text}"
-        
-        # Find specific nouns (more likely to have good images)
-        words = re.findall(r'\b[a-zA-Z]{4,}\b', all_text.lower())
-        
-        # Filter out abstract terms
-        abstract_terms = {"management", "strategy", "system", "process", "method", 
-                         "approach", "concept", "theory", "principle", "framework",
-                         "model", "analysis", "development", "implementation"}
-        
-        concrete_words = [word for word in words if word not in abstract_terms]
-        
-        # Add the most frequent concrete words
-        word_counts = Counter(concrete_words)
-        most_common = [word for word, count in word_counts.most_common(5)]
-        
-        queries.extend(most_common)
-        
-        # Add combinations with presentation title for context
-        for word in most_common[:2]:
-            queries.append(f"{presentation_title} {word}")
-            queries.append(f"{slide_title} {word}")
-    
-    # Remove duplicates
-    queries = list(set(queries))
-    
-    # If we don't have good queries, fall back to slide title
-    if not queries or not any(q.strip() for q in queries):
-        queries = [slide_title]
-    
+    queries.append(title)
+    queries.append(f"{section} {title}")
+    extra_keywords = ["illustration", "concept", "background", "design", "education"]
+    for kw in extra_keywords:
+        queries.append(f"{title} {section} {kw}")
+    if points:
+        first_point = points[0]["text"] if isinstance(points[0], dict) else str(points[0])
+        keywords = " ".join(first_point.split()[:3])
+        queries.append(f"{title} {keywords}")
     return queries
+
 
 def determine_slide_layout(slide_index, detail_level, content_length, outline, section_title):
     """
@@ -392,7 +332,7 @@ def determine_slide_layout(slide_index, detail_level, content_length, outline, s
         return "title_content"
 
     # Available layouts, excluding 'image_full' and 'comparison'
-    image_layouts = ["image_left_text_right", "image_right_text_left"]
+    image_layouts = ["image_left_text_right", "image_right_text_left","title"]
     content_layouts = ["title_content", "two_column"]
     
     # Combine lists to create a full set of options
@@ -417,16 +357,228 @@ def determine_slide_layout(slide_index, detail_level, content_length, outline, s
     return random.choice(layout_options)
 
 
+def create_image_title_slide(prs, presentation_title, image_path, primary_rgb, text_rgb, accent_rgb):
+    """
+    Creates a title slide with a full-page background image and a text box
+    in the bottom-right corner with a fixed size.
+    """
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+
+    slide_width = prs.slide_width
+    slide_height = prs.slide_height
+
+    # --- Add Image as a Full-page Background ---
+    img_left = Inches(0)
+    img_top = Inches(0)
+    img_width = slide_width
+    img_height = slide_height
+
+    try:
+        with PILImage.open(image_path) as img:
+            original_width_px, original_height_px = img.size
+        
+        container_aspect_ratio = float(img_width.emu) / float(img_height.emu)
+        image_aspect_ratio = float(original_width_px) / float(original_height_px)
+
+        if image_aspect_ratio > container_aspect_ratio:
+            new_height_emu = img_height.emu
+            new_width_emu = int(new_height_emu * image_aspect_ratio)
+            picture_left_emu = img_left.emu + (img_width.emu - new_width_emu) / 2
+            picture_top_emu = img_top.emu
+        else:
+            new_width_emu = img_width.emu
+            new_height_emu = int(new_width_emu / image_aspect_ratio)
+            picture_left_emu = img_left.emu
+            picture_top_emu = img_top.emu + (img_height.emu - new_height_emu) / 2
+
+        slide.shapes.add_picture(
+            image_path, picture_left_emu, picture_top_emu,
+            width=new_width_emu, height=new_height_emu
+        )
+    
+    except FileNotFoundError:
+        print(f"Error: Image file not found at {image_path}. Using solid background.")
+        background = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, 0, 0, slide_width, slide_height)
+        background.fill.solid()
+        background.fill.fore_color.rgb = RGBColor(*primary_rgb)
+        background.line.fill.background()
+
+    # --- Add Text in a Bounding Box in the Bottom-Right Corner ---
+    # CHANGED: Using slightly smaller fixed dimensions
+    box_width = Inches(4.0)
+    box_height = Inches(1.8)
+    box_left = slide_width - box_width - Inches(0.3)
+    box_top = slide_height - box_height - Inches(0.2)
+
+    # Create the white bounding box
+    text_container = slide.shapes.add_shape(
+        MSO_SHAPE.ROUNDED_RECTANGLE, box_left, box_top, box_width, box_height
+    )
+    text_container.fill.solid()
+    text_container.fill.fore_color.rgb = RGBColor(255, 255, 255)
+    text_container.line.fill.background()
+
+    # Add text box inside the white container
+    # The text box is slightly smaller than the container to provide padding
+    text_box = slide.shapes.add_textbox(box_left + Inches(0.2), box_top + Inches(0.2), 
+                                         box_width - Inches(0.4), box_height - Inches(0.4))
+    title_frame = text_box.text_frame
+    title_frame.word_wrap = True
+    title_frame.auto_size = MSO_AUTO_SIZE.SHAPE_TO_FIT_TEXT
+    title_frame.vertical_anchor = MSO_ANCHOR.MIDDLE
+    
+    title_frame.clear()
+    
+    p_title = title_frame.paragraphs[0]
+    p_title.text = presentation_title
+    p_title.alignment = PP_ALIGN.CENTER
+    p_title.font.size = Pt(28)
+    p_title.font.bold = True
+    p_title.font.color.rgb = RGBColor(0, 0, 0)
+
+    p_subtitle = title_frame.add_paragraph()
+    p_subtitle.text = "Generated with AI Presentation Generator"
+    p_subtitle.alignment = PP_ALIGN.CENTER
+    p_subtitle.font.size = Pt(14)
+    p_subtitle.font.color.rgb = RGBColor(0, 0, 0)
+    p_subtitle.space_before = Inches(0.3)
+
+    return slide
+
+
+'''def create_image_title_slide(prs, presentation_title, image_path, primary_rgb, text_rgb, accent_rgb):
+    """
+    Creates a title slide with an image on the left and title text on the right,
+    mimicking a modern, stylish layout.
+    """
+    # Use a blank slide layout (index 6) for a custom layout
+    slide = prs.slides.add_slide(prs.slide_layouts[6])
+
+    # Get slide dimensions for proportional scaling
+    slide_width = prs.slide_width
+    slide_height = prs.slide_height
+
+    # --- Set Background for the Right Half (Gradient) ---
+    right_half_shape = slide.shapes.add_shape(
+        MSO_SHAPE.RECTANGLE, 
+        slide_width / 2, 
+        Inches(0), 
+        slide_width / 2, 
+        slide_height
+    )
+    fill = right_half_shape.fill
+
+    # Initialize gradient fill
+    fill.gradient()
+    
+    # Set gradient properties
+    fill.gradient_angle = 180
+
+    # Handle gradient stops
+    start_color_gradient = RGBColor(255, 255, 255)  # White at the top
+    end_color_gradient = RGBColor(*primary_rgb)
+    
+    # Ensure we have at least 2 gradient stops
+    while len(fill.gradient_stops) < 2:
+        fill.gradient_stops.add_stop(0.0, RGBColor(0, 0, 0))
+    
+    # Modify the first two stops
+    fill.gradient_stops[0].position = 0.0
+    fill.gradient_stops[0].color.rgb = start_color_gradient
+    
+    fill.gradient_stops[1].position = 1.0
+    fill.gradient_stops[1].color.rgb = end_color_gradient
+    
+    # Remove any additional stops if they exist
+    for i in range(len(fill.gradient_stops) - 1, 1, -1):
+        fill.gradient_stops[i].delete()
+    
+    right_half_shape.line.fill.background()
+
+    # --- Add Image on the Left ---
+    img_left = Inches(0)
+    img_top = Inches(0)
+    img_width = slide_width / 2
+    img_height = slide_height
+
+    try:
+        with PILImage.open(image_path) as img:
+            original_width_px, original_height_px = img.size
+        
+        container_aspect_ratio = float(img_width) / float(img_height)
+        image_aspect_ratio = float(original_width_px) / float(original_height_px)
+
+        if image_aspect_ratio > container_aspect_ratio:
+            new_height_emu = img_height
+            new_width_emu = int(img_height * image_aspect_ratio)
+            picture_left_emu = img_left.emu + (img_width - new_width_emu) / 2
+            picture_top_emu = img_top.emu
+        else:
+            new_width_emu = img_width
+            new_height_emu = int(img_width / image_aspect_ratio)
+            picture_left_emu = img_left.emu
+            picture_top_emu = img_top.emu + (img_height - new_height_emu) / 2
+
+        slide.shapes.add_picture(
+            image_path, picture_left_emu, picture_top_emu,
+            width=new_width_emu, height=new_height_emu
+        )
+    
+    except FileNotFoundError:
+        print(f"Error: Image file not found at {image_path}. Using a grey placeholder.")
+        placeholder_shape = slide.shapes.add_shape(
+            MSO_SHAPE.RECTANGLE, img_left, img_top, img_width, img_height
+        )
+        placeholder_fill = placeholder_shape.fill
+        placeholder_fill.solid()
+        placeholder_fill.fore_color.rgb = RGBColor(180, 180, 180)
+        placeholder_shape.line.fill.background()
+    
+    # --- Add Title and Subtitle Text on the Right ---
+    title_box_left = slide_width / 2 + Inches(0.5)
+    title_box_top = Inches(1.5)
+    title_box_width = slide_width / 2 - Inches(1)
+    title_box_height = Inches(3)
+
+    title_box = slide.shapes.add_textbox(title_box_left, title_box_top, title_box_width, title_box_height)
+    title_frame = title_box.text_frame
+    title_frame.word_wrap = True
+    
+    # CORRECTED: Simple and reliable way to clear and add text
+    # Clear all text first
+    title_frame.clear()
+    
+    # Add title paragraph
+    p_title = title_frame.paragraphs[0]
+    p_title.text = presentation_title
+    p_title.alignment = PP_ALIGN.CENTER
+    p_title.font.size = Pt(44)
+    p_title.font.bold = True
+    p_title.font.color.rgb = RGBColor(*accent_rgb)
+
+    # Add subtitle paragraph
+    p_subtitle = title_frame.add_paragraph()
+    p_subtitle.text = "Generated with AI Presentation Generator'Ammar Yasser'"
+    p_subtitle.alignment = PP_ALIGN.CENTER
+    p_subtitle.font.size = Pt(18)
+    p_subtitle.font.color.rgb = RGBColor(*text_rgb)
+    p_subtitle.space_before = Inches(0.3)
+
+    title_box.vertical_anchor = MSO_ANCHOR.MIDDLE
+    
+    return slide'''
+# And a simple fallback create_title_slide (if not already defined and used in your main loop)
 def create_title_slide(prs, presentation_title, text_rgb):
-    """Create a title slide with theme colors"""
-    slide = prs.slides.add_slide(prs.slide_layouts[0])
+    """
+    Creates a basic text-only title slide (fallback for image issues).
+    """
+    slide = prs.slides.add_slide(prs.slide_layouts[0]) # Use default title layout
     title = slide.shapes.title
     subtitle = slide.placeholders[1]
     
     title.text = presentation_title
     subtitle.text = "Created with AI Presentation Generator"
     
-    # Apply text color with bold for better visibility
     for paragraph in title.text_frame.paragraphs:
         paragraph.font.color.rgb = RGBColor(*text_rgb)
         paragraph.font.bold = True
@@ -471,8 +623,11 @@ def create_title_content_slide(prs, section, points, text_rgb):
     
     return slide
 
-def create_image_left_text_right_slide(prs, section, points, image_path, text_rgb):
-    """Create a slide with image on left and text on right with a modern layout."""
+def create_image_left_text_right_slide(prs, section, points, image_path, primary_rgb, text_rgb, accent_rgb):
+    """
+    Creates a slide with image on left and text on right, with modern styling
+    and dynamic theme colors.
+    """
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     
     # Define layout dimensions
@@ -489,12 +644,13 @@ def create_image_left_text_right_slide(prs, section, points, image_path, text_rg
     text_container = slide.shapes.add_shape(
         MSO_SHAPE.ROUNDED_RECTANGLE, text_left, text_top, text_width, text_height
     )
-    text_container.fill.background()
+    text_container.fill.solid() # CHANGED: Solid white background for the text container
+    text_container.fill.fore_color.rgb = RGBColor(255, 255, 255)
     text_container.line.width = Pt(1)
-    text_container.line.color.rgb = RGBColor(*text_rgb)
+    text_container.line.color.rgb = RGBColor(*accent_rgb) # Border line color is accent
     text_container.line.dash_style = MSO_LINE.DASH
 
-    # Add title and decorative line
+    # Add title with dynamic color
     title_box = slide.shapes.add_textbox(Inches(0.5), Inches(0.3), Inches(9), Inches(0.8))
     title_frame = title_box.text_frame
     title_frame.text = section
@@ -503,208 +659,202 @@ def create_image_left_text_right_slide(prs, section, points, image_path, text_rg
     title_frame.paragraphs[0].font.color.rgb = RGBColor(*text_rgb)
     title_frame.paragraphs[0].alignment = PP_ALIGN.CENTER
     
+    # Add modern decorative line
     line = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(1), Inches(1.1), Inches(8), Inches(0.02))
     line.fill.solid()
-    line.fill.fore_color.rgb = RGBColor(*text_rgb)
+    line.fill.fore_color.rgb = RGBColor(*accent_rgb)
     line.line.fill.background()
 
-    # Add image with correct scaling
+    # Add image container
     img_container = slide.shapes.add_shape(
         MSO_SHAPE.ROUNDED_RECTANGLE, img_left, img_top, img_width, img_height
     )
     img_container.fill.solid()
     img_container.fill.fore_color.rgb = RGBColor(255, 255, 255)
     img_container.line.width = Pt(2)
-    img_container.line.color.rgb = RGBColor(*text_rgb)
+    img_container.line.color.rgb = RGBColor(*accent_rgb)
     
     try:
         with Image.open(image_path) as img:
             original_width_px, original_height_px = img.size
     except FileNotFoundError:
         print(f"Error: Image file not found at {image_path}")
-        return slide
-    
-    # Calculate dimensions to maintain aspect ratio
-    container_width_emu = img_width.emu
-    container_height_emu = img_height.emu
-    
-    ratio_w = container_width_emu / original_width_px
-    ratio_h = container_height_emu / original_height_px
-    
-    scale_factor = min(ratio_w, ratio_h)
-    
-    new_width_emu = int(original_width_px * scale_factor)
-    new_height_emu = int(original_height_px * scale_factor)
+        placeholder = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, img_left, img_top, img_width, img_height)
+        placeholder.fill.solid()
+        placeholder.fill.fore_color.rgb = RGBColor(200, 200, 200)
+        placeholder.line.width = Pt(2)
+        placeholder.line.color.rgb = RGBColor(*text_rgb)
+    else:
+        container_width_emu = img_width.emu
+        container_height_emu = img_height.emu
+        ratio_w = container_width_emu / original_width_px
+        ratio_h = container_height_emu / original_height_px
+        scale_factor = min(ratio_w, ratio_h)
+        new_width_emu = int(original_width_px * scale_factor)
+        new_height_emu = int(original_height_px * scale_factor)
+        picture_left_emu = img_left.emu + (container_width_emu - new_width_emu) / 2
+        picture_top_emu = img_top.emu + (container_height_emu - new_height_emu) / 2
+        slide.shapes.add_picture(
+            image_path, picture_left_emu, picture_top_emu, 
+            width=new_width_emu, height=new_height_emu
+        )
 
-    # Center the picture within its container
-    picture_left_emu = img_left.emu + (container_width_emu - new_width_emu) / 2
-    picture_top_emu = img_top.emu + (container_height_emu - new_height_emu) / 2
-    
-    picture = slide.shapes.add_picture(
-        image_path, picture_left_emu, picture_top_emu, 
-        width=new_width_emu, height=new_height_emu
-    )
-    
-    # Add text box with bullet points, positioned inside the container
+    # Add text box with modern styling
     text_inner_left = text_left + Inches(0.2)
-    text_inner_top = text_top + Inches(0.5) # Adjust this value to shift the text down
+    text_inner_top = text_top + Inches(0.5)
     text_inner_width = text_width - Inches(0.4)
     text_inner_height = text_height - Inches(0.4)
-    
     text_box = slide.shapes.add_textbox(
         text_inner_left, text_inner_top, text_inner_width, text_inner_height
     )
     text_frame = text_box.text_frame
     text_frame.word_wrap = True
     
-    # Add decorative icon/bullet points
     first = True
     for i, point in enumerate(points):
         level = point.get("level", 0)
-        if first:
-            p = text_frame.paragraphs[0]
-            first = False
-        else:
-            p = text_frame.add_paragraph()
+        p = text_frame.paragraphs[0] if first else text_frame.add_paragraph()
+        first = False
         
-        p.text = "•  " + point["text"]
+        p.text = "●  " + point["text"]
         p.level = level
         p.font.size = Pt(16)
-        p.font.color.rgb = RGBColor(*text_rgb)
+        p.font.color.rgb = RGBColor(0, 0, 0)
         p.space_after = Inches(0.15) if i < len(points) - 1 else Inches(0.1)
+
+        if i == 0:
+            p.font.bold = True
+            p.font.color.rgb = RGBColor(0, 0, 0)
 
     # Add decorative elements
     decor_right = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(9), Inches(0.1), Inches(0.4), Inches(0.4))
     decor_right.fill.solid()
-    decor_right.fill.fore_color.rgb = RGBColor(*text_rgb)
+    decor_right.fill.fore_color.rgb = RGBColor(*accent_rgb)
     decor_right.line.fill.background()
     
     decor_left = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(0.1), Inches(6.5), Inches(0.3), Inches(0.3))
     decor_left.fill.solid()
-    decor_left.fill.fore_color.rgb = RGBColor(*text_rgb)
+    decor_left.fill.fore_color.rgb = RGBColor(*primary_rgb)
     decor_left.line.fill.background()
     
     return slide
 
-def create_image_right_text_left_slide(prs, section, points, image_path, text_rgb):
-    """Create a slide with image on right and text on left with a modern layout."""
+
+
+def create_image_right_text_left_slide(prs, section, points, image_path, primary_rgb, text_rgb, accent_rgb):
+    """
+    Creates a slide with image on right and text on left, with modern styling
+    and dynamic theme colors.
+    """
     slide = prs.slides.add_slide(prs.slide_layouts[6])
     
     # Define layout dimensions
     text_left = Inches(0.5)
     text_top = Inches(1.5)
-    # Adjusted text container dimensions
     text_width = Inches(4.5)
-    text_height = Inches(4.5) 
-    
+    text_height = Inches(4.5)
     img_left = Inches(5.2)
     img_top = Inches(1.5)
     img_width = Inches(4.3)
     img_height = Inches(4.5)
 
-    # Add text container (the border)
-    text_container = slide.shapes.add_shape(
-        MSO_SHAPE.ROUNDED_RECTANGLE, text_left, text_top, text_width, text_height
-    )
-    text_container.fill.background()
-    text_container.line.width = Pt(1)
-    text_container.line.color.rgb = RGBColor(*text_rgb)
-    text_container.line.dash_style = MSO_LINE.DASH
-
-    # Add title (shifted to left)
+    # Add title with dynamic color
     title_box = slide.shapes.add_textbox(Inches(0.5), Inches(0.3), Inches(9), Inches(0.8))
     title_frame = title_box.text_frame
     title_frame.text = section
     title_frame.paragraphs[0].font.size = Pt(36)
     title_frame.paragraphs[0].font.bold = True
     title_frame.paragraphs[0].font.color.rgb = RGBColor(*text_rgb)
-    title_frame.paragraphs[0].alignment = PP_ALIGN.LEFT # Aligned to the left
+    title_frame.paragraphs[0].alignment = PP_ALIGN.CENTER
     
-    # Removed the decorative line under the title
+    # Add modern decorative line
+    line = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, Inches(1), Inches(1.1), Inches(8), Inches(0.02))
+    line.fill.solid()
+    line.fill.fore_color.rgb = RGBColor(*accent_rgb)
+    line.line.fill.background()
 
-    # Add image container (the border)
-    img_container = slide.shapes.add_shape(
-        MSO_SHAPE.ROUNDED_RECTANGLE, img_left, img_top, img_width, img_height
+    # Add text container (the border)
+    text_container = slide.shapes.add_shape(
+        MSO_SHAPE.ROUNDED_RECTANGLE, text_left, text_top, text_width, text_height
     )
-    img_container.fill.solid()
-    img_container.fill.fore_color.rgb = RGBColor(255, 255, 255)
-    img_container.line.width = Pt(2)
-    img_container.line.color.rgb = RGBColor(*text_rgb)
-    
-    try:
-        with Image.open(image_path) as img:
-            original_width_px, original_height_px = img.size
-    except FileNotFoundError:
-        print(f"Error: Image file not found at {image_path}")
-        return slide
-    
-    # Calculate dimensions to maintain aspect ratio
-    container_width_emu = img_width.emu
-    container_height_emu = img_height.emu
-    
-    ratio_w = container_width_emu / original_width_px
-    ratio_h = container_height_emu / original_height_px
-    
-    scale_factor = min(ratio_w, ratio_h)
-    
-    new_width_emu = int(original_width_px * scale_factor)
-    new_height_emu = int(original_height_px * scale_factor)
+    text_container.fill.solid() # CHANGED: Solid white background for the text container
+    text_container.fill.fore_color.rgb = RGBColor(255, 255, 255)
+    text_container.line.width = Pt(1)
+    text_container.line.color.rgb = RGBColor(*accent_rgb) # Border line color is accent
+    text_container.line.dash_style = MSO_LINE.DASH
 
-    # Center the picture within its container
-    picture_left_emu = img_left.emu + (container_width_emu - new_width_emu) / 2
-    picture_top_emu = img_top.emu + (container_height_emu - new_height_emu) / 2
-    
-    picture = slide.shapes.add_picture(
-        image_path, picture_left_emu, picture_top_emu, 
-        width=new_width_emu, height=new_height_emu
-    )
-    
     # Add text box with bullet points, positioned inside the container
     text_inner_left = text_left + Inches(0.2)
     text_inner_top = text_top + Inches(0.5)
     text_inner_width = text_width - Inches(0.4)
     text_inner_height = text_height - Inches(0.4)
     
-    text_box = slide.shapes.add_textbox(
-        text_inner_left, text_inner_top, text_inner_width, text_inner_height
-    )
+    text_box = slide.shapes.add_textbox(text_inner_left, text_inner_top, text_inner_width, text_inner_height)
     text_frame = text_box.text_frame
     text_frame.word_wrap = True
     
-    # Add decorative icon/bullet points
     first = True
     for i, point in enumerate(points):
         level = point.get("level", 0)
-        if first:
-            p = text_frame.paragraphs[0]
-            first = False
-        else:
-            p = text_frame.add_paragraph()
+        p = text_frame.paragraphs[0] if first else text_frame.add_paragraph()
+        first = False
         
-        p.text = "•  " + point["text"]
+        p.text = "●  " + point["text"]
         p.level = level
         p.font.size = Pt(16)
-        p.font.color.rgb = RGBColor(*text_rgb)
+        p.font.color.rgb = RGBColor(0, 0, 0) # Fixed black color for body text
         p.space_after = Inches(0.15) if i < len(points) - 1 else Inches(0.1)
 
+        if i == 0:
+            p.font.bold = True
+            p.font.color.rgb = RGBColor(0, 0, 0) # First point also has black color
+            
+    # Add image container
+    img_container = slide.shapes.add_shape(
+        MSO_SHAPE.ROUNDED_RECTANGLE, img_left, img_top, img_width, img_height
+    )
+    img_container.fill.solid()
+    img_container.fill.fore_color.rgb = RGBColor(255, 255, 255)
+    img_container.line.width = Pt(2)
+    img_container.line.color.rgb = RGBColor(*accent_rgb)
+    
+    try:
+        with Image.open(image_path) as img:
+            original_width_px, original_height_px = img.size
+    except FileNotFoundError:
+        print(f"Error: Image file not found at {image_path}")
+        placeholder = slide.shapes.add_shape(MSO_SHAPE.RECTANGLE, img_left, img_top, img_width, img_height)
+        placeholder.fill.solid()
+        placeholder.fill.fore_color.rgb = RGBColor(200, 200, 200)
+        placeholder.line.width = Pt(2)
+        placeholder.line.color.rgb = RGBColor(*text_rgb)
+    else:
+        container_width_emu = img_width.emu
+        container_height_emu = img_height.emu
+        ratio_w = container_width_emu / original_width_px
+        ratio_h = container_height_emu / original_height_px
+        scale_factor = min(ratio_w, ratio_h)
+        new_width_emu = int(original_width_px * scale_factor)
+        new_height_emu = int(original_height_px * scale_factor)
+        picture_left_emu = img_left.emu + (container_width_emu - new_width_emu) / 2
+        picture_top_emu = img_top.emu + (container_height_emu - new_height_emu) / 2
+        slide.shapes.add_picture(
+            image_path, picture_left_emu, picture_top_emu, 
+            width=new_width_emu, height=new_height_emu
+        )
+    
     # Add decorative elements
     decor_right = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(9), Inches(0.1), Inches(0.4), Inches(0.4))
     decor_right.fill.solid()
-    decor_right.fill.fore_color.rgb = RGBColor(*text_rgb)
+    decor_right.fill.fore_color.rgb = RGBColor(*accent_rgb)
     decor_right.line.fill.background()
     
     decor_left = slide.shapes.add_shape(MSO_SHAPE.OVAL, Inches(0.1), Inches(6.5), Inches(0.3), Inches(0.3))
     decor_left.fill.solid()
-    decor_left.fill.fore_color.rgb = RGBColor(*text_rgb)
+    decor_left.fill.fore_color.rgb = RGBColor(*primary_rgb)
     decor_left.line.fill.background()
     
     return slide
-
-from pptx.util import Inches, Pt
-from pptx.enum.shapes import MSO_SHAPE
-from pptx.enum.dml import MSO_LINE
-from pptx.enum.text import PP_ALIGN
-from pptx.dml.color import RGBColor
 
 def create_two_column_slide(prs, section, points, text_rgb):
     """
@@ -804,179 +954,6 @@ def create_two_column_slide(prs, section, points, text_rgb):
     
     return slide
 
-
-'''def create_image_left_text_right_slide(prs, section, points, image_path, text_rgb):
-    """Create a slide with image on left and text on right with theme colors"""
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-    
-    # Add title
-    left = Inches(0.5)
-    top = Inches(0.5)
-    width = Inches(9)
-    height = Inches(1)
-    title_box = slide.shapes.add_textbox(left, top, width, height)
-    title_frame = title_box.text_frame
-    title_frame.text = section
-    title_frame.paragraphs[0].font.size = Pt(32)
-    title_frame.paragraphs[0].font.bold = True
-    title_frame.paragraphs[0].font.color.rgb = RGBColor(*text_rgb)
-    
-    # Add image on left
-    img_left = Inches(0.5)
-    img_top = Inches(1.5)
-    img_width = Inches(4.5)
-    img_height = Inches(5.5)
-    slide.shapes.add_picture(image_path, img_left, img_top, width=img_width, height=img_height)
-    
-    # Add text on right
-    text_left = Inches(5.5)
-    text_top = Inches(1.5)
-    text_width = Inches(4.5)
-    text_height = Inches(5.5)
-    text_box = slide.shapes.add_textbox(text_left, text_top, text_width, text_height)
-    text_frame = text_box.text_frame
-    text_frame.word_wrap = True
-    
-    first = True
-    for point in points:
-        level = point.get("level", 0)
-        
-        if first:
-            p = text_frame.paragraphs[0]
-            first = False
-        else:
-            p = text_frame.add_paragraph()
-        
-        p.text = point["text"]
-        p.level = level
-        p.font.size = Pt(14)
-        p.font.color.rgb = RGBColor(*text_rgb)
-    
-    return slide'''
-
-'''def create_image_right_text_left_slide(prs, section, points, image_path, text_rgb):
-    """Create a slide with image on right and text on left with theme colors"""
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-    
-    # Add title
-    left = Inches(0.5)
-    top = Inches(0.5)
-    width = Inches(9)
-    height = Inches(1)
-    title_box = slide.shapes.add_textbox(left, top, width, height)
-    title_frame = title_box.text_frame
-    title_frame.text = section
-    title_frame.paragraphs[0].font.size = Pt(32)
-    title_frame.paragraphs[0].font.bold = True
-    title_frame.paragraphs[0].font.color.rgb = RGBColor(*text_rgb)
-    
-    # Add text on left
-    text_left = Inches(0.5)
-    text_top = Inches(1.5)
-    text_width = Inches(4.5)
-    text_height = Inches(5.5)
-    text_box = slide.shapes.add_textbox(text_left, text_top, text_width, text_height)
-    text_frame = text_box.text_frame
-    text_frame.word_wrap = True
-    
-    first = True
-    for point in points:
-        level = point.get("level", 0)
-        
-        if first:
-            p = text_frame.paragraphs[0]
-            first = False
-        else:
-            p = text_frame.add_paragraph()
-        
-        p.text = point["text"]
-        p.level = level
-        p.font.size = Pt(14)
-        p.font.color.rgb = RGBColor(*text_rgb)
-    
-    # Add image on right
-    img_left = Inches(5.5)
-    img_top = Inches(1.5)
-    img_width = Inches(4.5)
-    img_height = Inches(5.5)
-    slide.shapes.add_picture(image_path, img_left, img_top, width=img_width, height=img_height)
-    
-    return slide'''
-
-
-'''def create_two_column_slide(prs, section, points, text_rgb):
-    """Create a slide with two columns of text with theme colors"""
-    slide = prs.slides.add_slide(prs.slide_layouts[6])
-    
-    # Add title
-    left = Inches(0.5)
-    top = Inches(0.5)
-    width = Inches(9)
-    height = Inches(1)
-    title_box = slide.shapes.add_textbox(left, top, width, height)
-    title_frame = title_box.text_frame
-    title_frame.text = section
-    title_frame.paragraphs[0].font.size = Pt(32)
-    title_frame.paragraphs[0].font.bold = True
-    title_frame.paragraphs[0].font.color.rgb = RGBColor(*text_rgb)
-    
-    # Split points into two columns
-    mid_point = len(points) // 2
-    left_points = points[:mid_point]
-    right_points = points[mid_point:]
-    
-    # Add left column
-    left_text_left = Inches(0.5)
-    left_text_top = Inches(1.5)
-    left_text_width = Inches(4.5)
-    left_text_height = Inches(5.5)
-    left_text_box = slide.shapes.add_textbox(left_text_left, left_text_top, left_text_width, left_text_height)
-    left_text_frame = left_text_box.text_frame
-    left_text_frame.word_wrap = True
-    
-    first = True
-    for point in left_points:
-        level = point.get("level", 0)
-        
-        if first:
-            p = left_text_frame.paragraphs[0]
-            first = False
-        else:
-            p = left_text_frame.add_paragraph()
-        
-        p.text = point["text"]
-        p.level = level
-        p.font.size = Pt(14)
-        p.font.color.rgb = RGBColor(*text_rgb)
-    
-    # Add right column
-    right_text_left = Inches(5.5)
-    right_text_top = Inches(1.5)
-    right_text_width = Inches(4.5)
-    right_text_height = Inches(5.5)
-    right_text_box = slide.shapes.add_textbox(right_text_left, right_text_top, right_text_width, right_text_height)
-    right_text_frame = right_text_box.text_frame
-    right_text_frame.word_wrap = True
-    
-    first = True
-    for point in right_points:
-        level = point.get("level", 0)
-        
-        if first:
-            p = right_text_frame.paragraphs[0]
-            first = False
-        else:
-            p = right_text_frame.add_paragraph()
-        
-        p.text = point["text"]
-        p.level = level
-        p.font.size = Pt(14)
-        p.font.color.rgb = RGBColor(*text_rgb)
-    
-    return slide
-'''
-
-
 def create_conclusion_slide(prs, section, points, text_rgb):
     """Create a conclusion slide with theme colors"""
     slide = prs.slides.add_slide(prs.slide_layouts[6])
@@ -1075,91 +1052,111 @@ def create_presentation(outline, presentation_title, detail_level, filename="pre
     Creates a PowerPoint presentation from a structured outline with dynamic color theming.
     """
     try:
-        # Initialize Groq client for color palette generation
+        # Initialize Groq client and get color palette
         client = initialize_groq_client()
-        
-        # Get color palette from LLM based on content
-        print("🎨 Generating color palette based on presentation content...")
         color_palette = get_color_palette_from_llm(client, presentation_title, outline)
-        
-        print(f"🎨 Color Palette: Primary: {color_palette['primary_color']}, "
-              f"Accent: {color_palette['accent_color']}")
-        
-        # Convert hex colors to RGB
         primary_rgb = hex_to_rgb(color_palette["primary_color"])
         accent_rgb = hex_to_rgb(color_palette["accent_color"])
-        
-        # ✅ Determine text color dynamically (black/white) based on background
         text_hex = calculate_text_color(color_palette["primary_color"])
         text_rgb = hex_to_rgb(text_hex)
-        
-        # Load the theme from the specified path, if it exists
-        if theme_path and os.path.exists(theme_path):
-            prs = Presentation(theme_path)
-            
-            # Delete all existing slides from the template
-            for i in range(len(prs.slides) - 1, -1, -1):
-                rId = prs.slides._sldIdLst[i].rId
-                prs.part.drop_rel(rId)
-                del prs.slides._sldIdLst[i]
-        else:
-            # Create a blank presentation if no theme is found
-            prs = Presentation()
-        
-        # Apply color theme to background
+        prs = Presentation()
         apply_color_theme(prs, color_palette)
         
-        # Add the main title slide
-        create_title_slide(prs, presentation_title, text_rgb)
+        # Ensure the presentation ends with a conclusion slide
+        image_folder = "Img"
+        if not os.path.exists(image_folder):
+            os.makedirs(image_folder)
+            print(f"✅ Created image folder: {image_folder}")
         
-        # Create a temporary directory for downloaded images
-        with tempfile.TemporaryDirectory() as temp_dir:
-            # Iterate through the outline to create each slide
-            for i, (section, points) in enumerate(outline.items()):
-                slide_index = i + 1  # Offset by 1 for the title slide
-                layout = determine_slide_layout(slide_index, detail_level, len(points), outline, section)
+        # --- START: Logic for title slide with an image ---
+        print("Creating title slide with image...")
+        
+        title_queries = get_relevant_image_queries(
+            presentation_title, 
+            "Introduction", 
+            list(outline.values())[0], 
+            detail_level == "detailed"
+        )
+        title_image_path = None
+        
+        for query in title_queries:
+            images = search_images(query, 5)  # CHANGED: Search for more images
+            if images:
+                # CHANGED: Pick a random image from the results
+                image_to_download = random.choice(images)
                 
-                print(f"Creating slide {slide_index}: {section} ({layout} layout)")
+                sanitized_title = re.sub(r'[\\/:*?"<>|]', '_', presentation_title)
+                title_image_path = os.path.join(image_folder, f"{sanitized_title}_{image_to_download['id']}.jpg")
+                if download_image(image_to_download['download_url'], title_image_path):
+                    break
+                else:
+                    title_image_path = None
+        
+        if title_image_path and os.path.exists(title_image_path):
+            create_image_title_slide(
+                prs, 
+                presentation_title, 
+                title_image_path, 
+                primary_rgb,
+                text_rgb,
+                accent_rgb
+            )
+        else:
+            print(f"⚠️ No image found for title slide, using text-only layout.")
+            create_title_slide(prs, presentation_title, text_rgb)
+        
+        # --- END: Logic for title slide with an image ---
+
+        # Iterate through the outline to create each slide
+        for i, (section, points) in enumerate(outline.items()):
+            slide_index = i + 1
+            layout = determine_slide_layout(slide_index, detail_level, len(points), outline, section)
+            
+            print(f"Creating slide {slide_index}: {section} ({layout} layout)")
+            
+            slide = None
+            if layout == "title_content":
+                slide = create_title_content_slide(prs, section, points, text_rgb)
+            
+            elif layout in ["image_left_text_right", "image_right_text_left", "image_full"]:
+                queries = get_relevant_image_queries(presentation_title, section, points, detail_level == "detailed")
+                image_found = False
                 
-                slide = None
-                if layout == "title_content":
+                for query in queries:
+                    images = search_images(query, 5) # CHANGED: Search for more images
+                    if images:
+                        # CHANGED: Pick a random image from the results
+                        image_to_download = random.choice(images)
+                        
+                        sanitized_section = re.sub(r'[\\/:*?"<>|]', '_', section)
+                        image_path = os.path.join(image_folder, f"{sanitized_section}_{image_to_download['id']}.jpg")
+                        if download_image(image_to_download['download_url'], image_path):
+                            image_found = True
+                            if layout == "image_left_text_right":
+                                slide = create_image_left_text_right_slide(prs, section, points, image_path, primary_rgb, text_rgb, accent_rgb)
+                            elif layout == "image_right_text_left":
+                                slide = create_image_right_text_left_slide(prs, section, points, image_path, primary_rgb, text_rgb, accent_rgb)
+                            break
+                
+                if not image_found:
+                    print(f"⚠️ No image found for '{section}', using title_content layout instead.")
                     slide = create_title_content_slide(prs, section, points, text_rgb)
-                
-                elif layout in ["image_left_text_right", "image_right_text_left", "image_full"]:
-                    queries = get_relevant_image_queries(presentation_title, section, points, detail_level == "detailed")
-                    image_found = False
-                    
-                    for query in queries:
-                        images = search_images(query, 3)
-                        if images:
-                            image_path = os.path.join(temp_dir, f"{section}_{images[0]['id']}.jpg")
-                            if download_image(images[0]['download_url'], image_path):
-                                image_found = True
-                                if layout == "image_left_text_right":
-                                    slide = create_image_left_text_right_slide(prs, section, points, image_path, text_rgb)
-                                elif layout == "image_right_text_left":
-                                    slide = create_image_right_text_left_slide(prs, section, points, image_path, text_rgb)
-                                break
-                    
-                    if not image_found:
-                        print(f"⚠️ No image found for '{section}', using title_content layout instead.")
-                        slide = create_title_content_slide(prs, section, points, text_rgb)
-                
-                elif layout == "two_column":
-                    slide = create_two_column_slide(prs, section, points,  text_rgb)
-                
-                elif layout == "conclusion":
-                    slide = create_conclusion_slide(prs, section, points, text_rgb)
-                
-                # Apply background color explicitly as fallback
-                if slide:
-                    try:
-                        background = slide.background
-                        fill = background.fill
-                        fill.solid()
-                        fill.fore_color.rgb = RGBColor(*primary_rgb)
-                    except Exception:
-                        pass
+            
+            elif layout == "two_column":
+                slide = create_two_column_slide(prs, section, points, text_rgb)
+            
+            elif layout == "conclusion":
+                slide = create_conclusion_slide(prs, section, points, text_rgb)
+            
+            # Apply background color explicitly as fallback
+            if slide:
+                try:
+                    background = slide.background
+                    fill = background.fill
+                    fill.solid()
+                    fill.fore_color.rgb = RGBColor(*primary_rgb)
+                except Exception:
+                    pass
         
         # Add Thank You slide at the end with theme colors
         create_thank_you_slide(prs, primary_rgb, text_rgb, accent_rgb)
